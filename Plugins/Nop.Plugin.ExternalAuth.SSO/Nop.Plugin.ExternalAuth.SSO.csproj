@@ -1,0 +1,118 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Copyright>Copyright © Cityweb</Copyright>
+		<Company>CW Cityweb</Company>
+		<Authors>CW Cityweb</Authors>
+		<RepositoryType>Git</RepositoryType>
+		<OutputPath>$(SolutionDir)\Presentation\Nop.Web\Plugins\ExternalAuth.SSO</OutputPath>
+		<OutDir>$(OutputPath)</OutDir>
+		<!--Set this parameter to true to get the dlls copied from the NuGet cache to the output of your project.
+    You need to set this parameter to true if your plugin has a nuget package
+    to ensure that the dlls copied from the NuGet cache to the output of your project-->
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Remove="plugin.json" />
+		<None Remove="Views\_ViewImports.cshtml" />
+		<None Remove="Views\_ViewStart.cshtml" />
+		<None Remove="Views\Configure.cshtml" />
+		<None Remove="Views\PublicInfo.cshtml" />
+		<None Remove="Views\AuditLog.cshtml" />
+		<None Remove="Views\SsoAccounts.cshtml" />
+		<None Remove="Views\AddSsoAccount.cshtml" />
+		<None Remove="Views\GroupRoleMappings.cshtml" />
+		<None Remove="Views\CreateOrUpdateGroupRoleMapping.cshtml" />
+		<None Remove="Views\MockSso\Login.cshtml" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="plugin.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Components\StoreScopeSSO\Default.cshtml">
+			<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\_ViewImports.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\_ViewStart.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\PublicInfo.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\AuditLog.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\SsoAccounts.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\AddSsoAccount.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\GroupRoleMappings.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\CreateOrUpdateGroupRoleMapping.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\MockSso\Login.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+
+	<ItemGroup>
+		<ProjectReference Include="$(SolutionDir)\Presentation\Nop.Web.Framework\Nop.Web.Framework.csproj" />
+		<ClearPluginAssemblies Include="$(SolutionDir)\Build\ClearPluginAssemblies.proj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- M4 — OpenID Connect handler. Pinned to an EXACT version (no floating wildcard).
+         10.0.9 is the last 10.0.x whose Microsoft.IdentityModel.Protocols.OpenIdConnect floor
+         (8.0.1) sits at or below what Nop.Web 5.00 ships (8.16.0); 10.0.10+ require 8.19.2,
+         which fails restore with NU1605 against the 8.16.0 guardrail below. A plugin compiled
+         against a newer Microsoft.IdentityModel.* than the host has loaded fails at runtime
+         (ReflectionTypeLoadException). See SSOPlan.v2.md §3.12 Notes for the
+         framework-upgrade procedure. -->
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+
+		<!-- M6 — SAML 2.0 via ITfoxtec.Identity.Saml2. MvcCore adds the ASP.NET Core action-result
+         helpers; the core package comes in transitively.
+         Pinned to an EXACT version. 4.17.0 is the last release whose net10.0 target needs
+         Microsoft.IdentityModel.Tokens.Saml 8.15.0, at or below Nop.Web 5.00's 8.16.0;
+         4.18+ need 8.18–8.22. Bump in lockstep when Nop.Web upgrades its
+         Microsoft.IdentityModel.* — see SSOPlan.v2.md §3.12 Notes. -->
+		<PackageReference Include="ITfoxtec.Identity.Saml2.MvcCore" Version="4.17.0" />
+
+		<!-- Guardrail: explicitly pin the Microsoft.IdentityModel.* stack to the exact version
+         Nop.Web 5.00 ships (8.16.0, Presentation/Nop.Web/bin). This prevents version drift from
+         the packages above and keeps the plugin's compiled references matching the assemblies
+         actually loaded at runtime. Tokens.Saml and Xml are not in Nop.Web/bin, so the plugin
+         ships them; they are pinned too so the whole family is one version.
+         Update these together with Nop.Web on a framework upgrade. -->
+		<PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.16.0" />
+		<PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.16.0" />
+		<PackageReference Include="Microsoft.IdentityModel.Tokens.Saml" Version="8.16.0" />
+		<PackageReference Include="Microsoft.IdentityModel.Xml" Version="8.16.0" />
+	</ItemGroup>
+
+	<!-- This target execute after "Build" target -->
+	<Target Name="NopTarget" AfterTargets="Build">
+		<!-- Delete unnecessary libraries from plugins path -->
+		<MSBuild Projects="@(ClearPluginAssemblies)" Properties="PluginPath=$(OutDir)" Targets="NopClear" />
+		<!-- Remove cross-platform runtime assets copied by CopyLocalLockFileAssemblies -->
+		<RemoveDir Directories="$(OutDir)\runtimes" />
+	</Target>
+
+</Project>

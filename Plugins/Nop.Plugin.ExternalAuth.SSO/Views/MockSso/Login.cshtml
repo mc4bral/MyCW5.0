@@ -1,0 +1,217 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.MockLoginModel
+@{
+    // Standalone page — no admin/store layout. The mock IdP is meant to feel like
+    // an external authority, so we deliberately don't render storefront chrome.
+    Layout = null;
+
+    var protocol = (string)(ViewBag.Protocol ?? "saml");
+    var completePath = (string)(ViewBag.CompletePath ?? "/mocksso/saml/complete");
+    var protocolLabel = string.Equals(protocol, "oidc", System.StringComparison.OrdinalIgnoreCase)
+        ? "OpenID Connect"
+        : "SAML 2.0";
+}
+@*
+    Dev-only mock IdP login page. Rendered only when EnableMockMode is on AND the
+    assembly was built with DEBUG. See MockSsoController + SSOPlan.v2.md row 24.
+
+    The form posts directly to the mock complete endpoint with the protocol-derived
+    URL — there is no SAML XML forging, no JWT forging, no certificate handling.
+    The server constructs a ClaimsPrincipal from these fields and hands it to the
+    same ISsoUserProvisioningService.HandleAsync the real callbacks use.
+*@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mock IdP — Sign in (@protocolLabel)</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 460px;
+            width: 100%;
+            padding: 40px;
+        }
+        .logo { text-align: center; margin-bottom: 16px; }
+        .logo svg { width: 108px; height: 24px; }
+        h1 { font-size: 22px; font-weight: 600; color: #1b1b1b; margin-bottom: 6px; }
+        .subtitle { font-size: 14px; color: #605e5c; margin-bottom: 18px; }
+        .alert { padding: 10px 14px; border-radius: 4px; margin-bottom: 18px; font-size: 13px; line-height: 1.45; }
+        .alert-warning { background-color: #fff4ce; border: 1px solid #ffb900; color: #323130; }
+        .scenario-selector { margin-bottom: 18px; background: #f3f2f1; border-radius: 4px; padding: 14px; }
+        .scenario-selector legend { font-size: 13px; font-weight: 600; color: #323130; margin-bottom: 8px; padding: 0; }
+        .scenario-options { display: flex; flex-direction: column; gap: 6px; }
+        .scenario-option { display: flex; align-items: flex-start; cursor: pointer; }
+        .scenario-option input[type="radio"] { margin-right: 8px; margin-top: 3px; cursor: pointer; }
+        .scenario-option span { font-size: 13px; color: #323130; }
+        .form-group { margin-bottom: 14px; }
+        .form-group.hidden { display: none; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #323130; margin-bottom: 4px; }
+        input[type="email"],
+        input[type="text"] {
+            width: 100%; padding: 8px 12px; font-size: 14px;
+            border: 1px solid #8a8886; border-radius: 2px; outline: none;
+            transition: border-color .15s;
+        }
+        input:focus { border-color: #0078d4; border-width: 2px; padding: 7px 11px; }
+        .hint { font-size: 12px; color: #605e5c; margin-top: 4px; }
+        .btn-primary {
+            width: 100%; background: #0078d4; color: white; border: none;
+            border-radius: 2px; padding: 11px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: background .15s;
+        }
+        .btn-primary:hover { background: #106ebe; }
+        .badge {
+            display: inline-block; padding: 3px 8px; border-radius: 3px;
+            font-size: 11px; font-weight: 600; background: #fff4ce; color: #8a8886;
+        }
+        .footer { margin-top: 18px; text-align: center; font-size: 12px; color: #605e5c; }
+        .meta { margin-top: 14px; font-family: Consolas, "Courier New", monospace; font-size: 11px; color: #605e5c; background: #faf9f8; border: 1px solid #edebe9; border-radius: 4px; padding: 10px; word-break: break-all; }
+        .ms-logo-f { fill: #f25022; } .ms-logo-g { fill: #7fba00; } .ms-logo-b { fill: #00a4ef; } .ms-logo-y { fill: #ffb900; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 24" aria-hidden="true">
+                <rect class="ms-logo-f" x="0" y="0" width="11" height="11" />
+                <rect class="ms-logo-g" x="12" y="0" width="11" height="11" />
+                <rect class="ms-logo-b" x="0" y="12" width="11" height="11" />
+                <rect class="ms-logo-y" x="12" y="12" width="11" height="11" />
+                <text x="28" y="17" font-family="Segoe UI,sans-serif" font-size="17" font-weight="600" fill="#5e5e5e">Microsoft</text>
+            </svg>
+        </div>
+
+        <h1>Sign in</h1>
+        <p class="subtitle">Mock IdP — @protocolLabel</p>
+
+        <div class="alert alert-warning">
+            <strong>MOCK MODE</strong> — This is a development-only test page that simulates the IdP.
+            No real authentication is performed. Enable/disable via the Configure page's Mock Mode card.
+        </div>
+
+        <form id="mockLoginForm" method="post" action="@completePath" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="@nameof(Model.ReturnUrl)" value="@Model.ReturnUrl" />
+
+            <fieldset class="scenario-selector">
+                <legend>Test scenario</legend>
+                <div class="scenario-options">
+                    <label class="scenario-option">
+                        <input type="radio" name="@nameof(Model.Scenario)" value="success-existing" checked />
+                        <span><strong>Existing user</strong> — link the SSO identity to a customer that already exists in nop.</span>
+                    </label>
+                    <label class="scenario-option">
+                        <input type="radio" name="@nameof(Model.Scenario)" value="success-new" />
+                        <span><strong>New user</strong> — auto-register (requires AutoRegister = true).</span>
+                    </label>
+                    <label class="scenario-option">
+                        <input type="radio" name="@nameof(Model.Scenario)" value="success-with-groups" />
+                        <span><strong>With groups</strong> — assert one or more group GUIDs to test the group→role mapping pipeline.</span>
+                    </label>
+                    <label class="scenario-option">
+                        <input type="radio" name="@nameof(Model.Scenario)" value="failure" />
+                        <span><strong>Failure</strong> — mock IdP rejects the user; verify the audit + redirect path.</span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <div class="form-group">
+                <label for="mockEmail">Email</label>
+                <input type="email" id="mockEmail" name="@nameof(Model.Email)"
+                       placeholder="someone@example.com" required />
+                <div class="hint" id="emailHint">Use an email that already exists in nop for this store.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="mockFirstName">First name</label>
+                <input type="text" id="mockFirstName" name="@nameof(Model.FirstName)" value="Mock" />
+                <div class="hint">Used only when auto-registering a new user.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="mockLastName">Last name</label>
+                <input type="text" id="mockLastName" name="@nameof(Model.LastName)" value="User" />
+                <div class="hint">Used only when auto-registering a new user.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="mockSubject">Subject (NameID / oid)</label>
+                <input type="text" id="mockSubject" name="@nameof(Model.Subject)" placeholder="(defaults to email)" />
+                <div class="hint">Optional. IdP-side stable identifier — leave blank to default to the email above.</div>
+            </div>
+
+            <div class="form-group hidden" id="groupsGroup">
+                <label for="mockGroups">Groups (comma-separated GUIDs)</label>
+                <input type="text" id="mockGroups" name="@nameof(Model.Groups)"
+                       placeholder="00000000-0000-0000-0000-000000000001, 00000000-0000-0000-0000-000000000002" />
+                <div class="hint">Each value is asserted in the configured groups claim. Used by the With groups scenario only.</div>
+            </div>
+
+            <button type="submit" class="btn-primary">Sign in</button>
+
+            <div class="meta">
+                <strong>Protocol:</strong> @protocolLabel<br />
+                <strong>POST target:</strong> @completePath<br />
+                <strong>ReturnUrl:</strong> @(string.IsNullOrEmpty(Model.ReturnUrl) ? "(none)" : Model.ReturnUrl)
+            </div>
+        </form>
+
+        <div class="footer">
+            <span class="badge">MOCK</span> SSO testing environment
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            // Toggle the Groups input based on the active scenario radio. The server
+            // ignores the groups value for any scenario other than success-with-groups,
+            // but hiding it keeps the UI focused on what each scenario actually exercises.
+            var groupsGroup = document.getElementById('groupsGroup');
+            var emailHint = document.getElementById('emailHint');
+            var radios = document.querySelectorAll('input[name="Scenario"]');
+
+            function applyScenario() {
+                var checked = document.querySelector('input[name="Scenario"]:checked');
+                var val = checked ? checked.value : 'success-existing';
+
+                if (val === 'success-with-groups') {
+                    groupsGroup.classList.remove('hidden');
+                } else {
+                    groupsGroup.classList.add('hidden');
+                }
+
+                switch (val) {
+                    case 'success-existing':
+                        emailHint.textContent = 'Use an email that already exists as a customer in nop for this store.';
+                        break;
+                    case 'success-new':
+                        emailHint.textContent = 'Use an email that does NOT exist yet — provisioning will auto-register.';
+                        break;
+                    case 'success-with-groups':
+                        emailHint.textContent = 'Existing or new email. Group GUIDs below drive the role-mapping result.';
+                        break;
+                    case 'failure':
+                        emailHint.textContent = 'Any value — the mock IdP will reject regardless of the email.';
+                        break;
+                }
+            }
+
+            radios.forEach(function (r) { r.addEventListener('change', applyScenario); });
+            applyScenario();
+        })();
+    </script>
+</body>
+</html>

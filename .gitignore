@@ -1,0 +1,56 @@
+## nopCommerce 5.00 (CW) — files that are generated, machine-specific or secret
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.nupkg
+TestResults/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+*.DotSettings.user
+_ReSharper*/
+
+# Built plugins — produced by each plugin's OutputPath on build
+Presentation/Nop.Web/Plugins/
+
+# App_Data — machine-specific settings, secrets and runtime state
+Presentation/Nop.Web/App_Data/appsettings.json
+Presentation/Nop.Web/App_Data/appsettings.*.json
+Presentation/Nop.Web/App_Data/dataSettings.json
+Presentation/Nop.Web/App_Data/plugins.json
+Presentation/Nop.Web/App_Data/DataProtectionKeys/
+Presentation/Nop.Web/App_Data/Gmail/
+Presentation/Nop.Web/App_Data/TempUploads/
+Presentation/Nop.Web/App_Data/*.log
+
+# wwwroot — generated assets and uploaded content
+Presentation/Nop.Web/wwwroot/bundles/
+Presentation/Nop.Web/wwwroot/lib_npm/
+Presentation/Nop.Web/wwwroot/images/thumbs/*
+!Presentation/Nop.Web/wwwroot/images/thumbs/placeholder.txt
+Presentation/Nop.Web/wwwroot/images/uploaded/*
+!Presentation/Nop.Web/wwwroot/images/uploaded/placeholder.txt
+Presentation/Nop.Web/wwwroot/files/exportimport/*
+!Presentation/Nop.Web/wwwroot/files/exportimport/placeholder.txt
+Presentation/Nop.Web/wwwroot/db_backups/*.bak
+Presentation/Nop.Web/wwwroot/sitemaps/*.xml
+
+# Node
+node_modules/
+
+# Secrets that must never reach this public repository
+Plugins/Nop.Plugin.ExternalAuth.SSO/SAMLSSOConfig_StoreID_110.json
+*.pfx
+*.p12
+
+# Old MiniOrange SAML plugin (third-party, commercial, unused) — kept local only
+Plugins/Nop.Plugin.ExternalAuth.SSO/miniorange.saml/

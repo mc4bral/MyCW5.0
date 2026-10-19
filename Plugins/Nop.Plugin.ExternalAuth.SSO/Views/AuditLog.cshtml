@@ -1,0 +1,157 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.SsoAuthEventSearchModel
+
+@{
+    Layout = "_AdminLayout";
+    ViewBag.PageTitle = T("Plugins.ExternalAuth.SSO.AuditLog.PageTitle").Text;
+    NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.AuditLog");
+}
+
+<div class="content-header clearfix">
+    <h1 class="float-left">
+        <i class="fas fa-clipboard-list"></i> @T("Plugins.ExternalAuth.SSO.AuditLog.PageTitle")
+    </h1>
+    <div class="float-right">
+        <form asp-action="ClearAuditLog" method="post" style="display:inline;"
+              onsubmit="return confirm('@T("Plugins.ExternalAuth.SSO.AuditLog.ClearConfirm").Text.Replace("'", "\\'")');">
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash"></i>
+                @T("Plugins.ExternalAuth.SSO.AuditLog.ClearButton")
+            </button>
+        </form>
+        <a asp-action="Configure" class="btn btn-secondary ml-2">
+            <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.AuditLog.BackToConfigure")
+        </a>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <div class="form-horizontal">
+
+            @* ---------------- Filter card ---------------- *@
+            <div class="card card-default">
+                <div class="card-header">
+                    <i class="fas fa-search"></i> @T("Plugins.ExternalAuth.SSO.AuditLog.FiltersTitle")
+                </div>
+                <div class="card-body">
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="StoreId" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-select asp-for="StoreId" asp-items="Model.AvailableStores" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="EventType" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-select asp-for="EventType" asp-items="Model.AvailableEventTypes" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="Protocol" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-select asp-for="Protocol" asp-items="Model.AvailableProtocols" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="CustomerEmail" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-editor asp-for="CustomerEmail" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="OccurredFrom" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-editor asp-for="OccurredFrom" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="OccurredTo" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-editor asp-for="OccurredTo" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-9 offset-md-3">
+                            <button type="button" id="search-ssoauthevents" class="btn btn-primary">
+                                <i class="fas fa-search"></i> @T("Admin.Common.Search")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ---------------- Grid card ---------------- *@
+            <div class="card card-default">
+                <div class="card-body">
+                    @await Html.PartialAsync("Table", new DataTablesModel
+                    {
+                        Name = "ssoauthevents-grid",
+                        UrlRead = new DataUrl("AuditLogList", "ExternalAuthSSO", null),
+                        SearchButtonId = "search-ssoauthevents",
+                        Length = Model.PageSize,
+                        LengthMenu = Model.AvailablePageSizes,
+                        Filters = new List<FilterParameter>
+                        {
+                            new FilterParameter(nameof(Model.StoreId)),
+                            new FilterParameter(nameof(Model.EventType)),
+                            new FilterParameter(nameof(Model.Protocol)),
+                            new FilterParameter(nameof(Model.CustomerEmail)),
+                            new FilterParameter(nameof(Model.OccurredFrom)),
+                            new FilterParameter(nameof(Model.OccurredTo))
+                        },
+                        ColumnCollection = new List<ColumnProperty>
+                        {
+                            new ColumnProperty(nameof(SsoAuthEventModel.OccurredOn))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.OccurredOn").Text,
+                                Width = "150"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.EventType))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.EventType").Text,
+                                Width = "110"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.Protocol))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.Protocol").Text,
+                                Width = "70"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.Store))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.Store").Text,
+                                Width = "120"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.CustomerEmail))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.Email").Text,
+                                Width = "200"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.IpAddress))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.IpAddress").Text,
+                                Width = "110"
+                            },
+                            new ColumnProperty(nameof(SsoAuthEventModel.Notes))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.AuditLog.Columns.Notes").Text
+                            }
+                        }
+                    })
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>

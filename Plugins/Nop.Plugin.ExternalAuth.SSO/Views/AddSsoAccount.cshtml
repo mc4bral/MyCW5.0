@@ -1,0 +1,63 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.AddSsoAccountModel
+
+@{
+    Layout = "_AdminLayout";
+    ViewBag.PageTitle = T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.PageTitle").Text;
+    NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.SsoAccounts");
+}
+
+<div class="content-header clearfix">
+    <h1 class="float-left">
+        <i class="fas fa-plus"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.PageTitle")
+    </h1>
+    <div class="float-right">
+        <a asp-action="SsoAccounts" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.BackButton")
+        </a>
+    </div>
+</div>
+
+<form asp-controller="ExternalAuthSSO" asp-action="AddSsoAccount" method="post">
+    <section class="content">
+        <div class="container-fluid">
+            <div class="form-horizontal">
+
+                <div class="card card-default">
+                    <div class="card-body">
+                        <p class="form-text text-muted mb-3">
+                            @T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.Hint")
+                        </p>
+
+                        @if (Model.AvailableStores.Count == 0)
+                        {
+                            <div class="alert alert-info">
+                                @T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.AllStoresConfigured")
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="StoreId" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-select asp-for="StoreId" asp-items="Model.AvailableStores" />
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <div class="col-md-9 offset-md-3">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-arrow-right"></i>
+                                        @T("Plugins.ExternalAuth.SSO.SsoAccounts.Add.ContinueButton")
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+</form>

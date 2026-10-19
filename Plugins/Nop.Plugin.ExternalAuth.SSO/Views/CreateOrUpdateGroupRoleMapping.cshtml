@@ -1,0 +1,121 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.SsoGroupRoleMappingModel
+
+@{
+    Layout = "_AdminLayout";
+    var isCreate = Model.Id == 0;
+    ViewBag.PageTitle = isCreate
+        ? T("Plugins.ExternalAuth.SSO.GroupRoleMapping.AddTitle").Text
+        : T("Plugins.ExternalAuth.SSO.GroupRoleMapping.EditTitle").Text;
+    NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.GroupRoleMappings");
+    var action = isCreate ? "GroupRoleMappingCreate" : "GroupRoleMappingEdit";
+}
+
+<form asp-controller="ExternalAuthSSO" asp-action="@action" method="post">
+    <input type="hidden" asp-for="Id" />
+
+    <div class="content-header clearfix">
+        <h1 class="float-left">
+            <i class="fas fa-users-cog"></i>
+            @(isCreate
+                ? T("Plugins.ExternalAuth.SSO.GroupRoleMapping.AddTitle")
+                : T("Plugins.ExternalAuth.SSO.GroupRoleMapping.EditTitle"))
+            @if (!isCreate)
+            {
+                <small> — @Model.IdpGroupDisplayName</small>
+            }
+        </h1>
+        <div class="float-right">
+            <button type="submit" name="save" class="btn btn-primary">
+                <i class="far fa-floppy-disk"></i> @T("Admin.Common.Save")
+            </button>
+            <button type="submit" name="save-continue" value="true" class="btn btn-primary"
+                    onclick="document.getElementById('continue-editing-hidden').value = 'true';">
+                <i class="far fa-floppy-disk"></i> @T("Admin.Common.SaveContinue")
+            </button>
+            @if (!isCreate)
+            {
+                <button type="button" id="mapping-delete" class="btn btn-danger ml-2">
+                    <i class="fas fa-trash-alt"></i> @T("Admin.Common.Delete")
+                </button>
+            }
+            <a asp-action="GroupRoleMappings" class="btn btn-secondary ml-2">
+                <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.BackButton")
+            </a>
+        </div>
+    </div>
+
+    <input type="hidden" name="continueEditing" id="continue-editing-hidden" value="false" />
+
+    <section class="content">
+        <div class="container-fluid">
+            <div class="form-horizontal">
+                <div asp-validation-summary="All"></div>
+
+                <div class="card card-default">
+                    <div class="card-body">
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="StoreId" /></div>
+                            <div class="col-md-9">
+                                <nop-select asp-for="StoreId" asp-items="Model.AvailableStores" />
+                                <span asp-validation-for="StoreId"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="IdpGroupId" /></div>
+                            <div class="col-md-9">
+                                <nop-editor asp-for="IdpGroupId"
+                                            html-attributes="@(new { placeholder = "00000000-0000-0000-0000-000000000000" })" />
+                                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Fields.IdpGroupId.Hint")</small>
+                                <span asp-validation-for="IdpGroupId"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="IdpGroupDisplayName" /></div>
+                            <div class="col-md-9">
+                                <nop-editor asp-for="IdpGroupDisplayName" />
+                                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Fields.IdpGroupDisplayName.Hint")</small>
+                                <span asp-validation-for="IdpGroupDisplayName"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="CustomerRoleId" /></div>
+                            <div class="col-md-9">
+                                <nop-select asp-for="CustomerRoleId" asp-items="Model.AvailableCustomerRoles" />
+                                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Fields.CustomerRole.Hint")</small>
+                                <span asp-validation-for="CustomerRoleId"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="DisplayOrder" /></div>
+                            <div class="col-md-9">
+                                <nop-editor asp-for="DisplayOrder" />
+                                <span asp-validation-for="DisplayOrder"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-group row">
+                            <div class="col-md-3"><nop-label asp-for="IsActive" /></div>
+                            <div class="col-md-9">
+                                <nop-editor asp-for="IsActive" />
+                                <span asp-validation-for="IsActive"></span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</form>
+
+@if (!isCreate)
+{
+    <nop-delete-confirmation asp-model-id="@Model.Id"
+                             asp-button-id="mapping-delete"
+                             asp-action="@Url.Action("GroupRoleMappingDelete", "ExternalAuthSSO")" />
+}

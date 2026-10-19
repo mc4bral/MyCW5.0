@@ -1,0 +1,11 @@
+{
+  "Group": "ExternalAuth methods",
+  "FriendlyName": "SSO Authentication",
+  "SystemName": "ExternalAuth.SSO",
+  "Version": "2026_05_22_DATA_0.1",
+  "SupportedVersions": [ "5.00" ],
+  "Author": "Total Image Group",
+  "DisplayOrder": 1,
+  "FileName": "Nop.Plugin.ExternalAuth.SSO.dll",
+  "Description": "Single Sign-On against Microsoft Entra ID. Supports OpenID Connect (primary) and SAML 2.0 (secondary), selectable per store."
+}

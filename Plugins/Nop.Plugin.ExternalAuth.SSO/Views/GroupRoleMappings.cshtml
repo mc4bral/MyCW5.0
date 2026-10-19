@@ -1,0 +1,122 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.SsoGroupRoleMappingSearchModel
+
+@{
+    Layout = "_AdminLayout";
+    ViewBag.PageTitle = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.PageTitle").Text;
+    NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.GroupRoleMappings");
+}
+
+<div class="content-header clearfix">
+    <h1 class="float-left">
+        <i class="fas fa-users-cog"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.PageTitle")
+    </h1>
+    <div class="float-right">
+        <a asp-action="GroupRoleMappingCreate" class="btn btn-primary">
+            <i class="fas fa-plus"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.AddNewButton")
+        </a>
+        <a asp-action="SsoAccounts" class="btn btn-secondary ml-2">
+            <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.BackButton")
+        </a>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <div class="form-horizontal">
+
+            @*
+                Intro banner — explains what this page is for. Admins land here straight
+                from the menu, so the goal + how-it-works summary up front saves them
+                guessing what "Group → role mapping" actually does.
+            *@
+            <div class="alert alert-info">
+                <h5 class="alert-heading mb-2">
+                    <i class="fas fa-info-circle"></i>
+                    @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Intro.Title")
+                </h5>
+                @Html.Raw(T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Intro.Body"))
+            </div>
+
+            <div class="card card-default">
+                <div class="card-header">
+                    <i class="fas fa-search"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.FiltersTitle")
+                </div>
+                <div class="card-body">
+                    <div class="form-group row">
+                        <div class="col-md-3">
+                            <nop-label asp-for="SearchStoreId" />
+                        </div>
+                        <div class="col-md-9">
+                            <nop-select asp-for="SearchStoreId" asp-items="Model.AvailableStores" />
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-md-9 offset-md-3">
+                            <button type="button" id="search-group-role-mappings" class="btn btn-primary">
+                                <i class="fas fa-search"></i> @T("Admin.Common.Search")
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card card-default">
+                <div class="card-body">
+                    @await Html.PartialAsync("Table", new DataTablesModel
+                    {
+                        Name = "group-role-mappings-grid",
+                        UrlRead = new DataUrl("GroupRoleMappingsList", "ExternalAuthSSO", null),
+                        SearchButtonId = "search-group-role-mappings",
+                        Length = Model.PageSize,
+                        LengthMenu = Model.AvailablePageSizes,
+                        Filters = new List<FilterParameter>
+                        {
+                            new FilterParameter(nameof(Model.SearchStoreId))
+                        },
+                        ColumnCollection = new List<ColumnProperty>
+                        {
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.DisplayOrder))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.DisplayOrder").Text,
+                                Width = "70"
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.StoreName))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.Store").Text,
+                                Width = "140"
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.IdpGroupDisplayName))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.GroupName").Text
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.IdpGroupId))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.GroupId").Text
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.CustomerRoleName))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.Role").Text,
+                                Width = "180"
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.IsActive))
+                            {
+                                Title = T("Plugins.ExternalAuth.SSO.GroupRoleMapping.Columns.IsActive").Text,
+                                Width = "70",
+                                ClassName = NopColumnClassDefaults.CenterAll,
+                                Render = new RenderBoolean()
+                            },
+                            new ColumnProperty(nameof(SsoGroupRoleMappingModel.Id))
+                            {
+                                Title = T("Admin.Common.Edit").Text,
+                                Width = "100",
+                                ClassName = NopColumnClassDefaults.Button,
+                                Render = new RenderButtonEdit(new DataUrl("GroupRoleMappingEdit", "ExternalAuthSSO", null))
+                            }
+                        }
+                    })
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>

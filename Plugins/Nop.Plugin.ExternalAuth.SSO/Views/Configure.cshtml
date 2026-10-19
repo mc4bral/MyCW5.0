@@ -1,0 +1,1103 @@
+@using Nop.Plugin.ExternalAuth.SSO.Components;
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+
+@{
+    Layout = "_AdminLayout";
+        NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.Configure");
+}
+
+@*
+    M13 — Configure layout matches the legacy SSOPlan.md screenshots so admins familiar
+    with the previous plugin find the same field labels, hints and card ordering.
+
+    Card order (legacy parity):
+      1. General
+      2. Identity Provider (Azure AD / Entra)
+      3. Send these to your IdP team        (onboarding report + SP metadata URL)
+      4. Service Provider (This Application)
+      5. Claim Mapping
+      6. User Provisioning
+      7. Bindings & Redirects
+      8. Custom Attributes (JSON)
+      9. Login Bypass (System-wide)
+     10. Audit Logging (System-wide)
+     11. Test SSO Connection
+
+    OIDC fields surface a dedicated "OpenID Connect" card between General and IdP — that
+    card has no analogue in the legacy plugin (which was SAML-only) but it slots into the
+    same flow naturally and is hidden behind the asp-card collapse if Protocol != OIDC.
+*@
+@{
+    var customer = await workContext.GetCurrentCustomerAsync();
+
+    const string hideGeneralBlockAttributeName = "ExternalAuthSSOPage.HideCard.General";
+    var hideGeneralBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideGeneralBlockAttributeName);
+
+    const string hideOidcBlockAttributeName = "ExternalAuthSSOPage.HideCard.Oidc";
+    var hideOidcBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideOidcBlockAttributeName);
+
+    const string hideIdpBlockAttributeName = "ExternalAuthSSOPage.HideCard.Idp";
+    var hideIdpBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideIdpBlockAttributeName);
+
+    const string hideSendToIdpBlockAttributeName = "ExternalAuthSSOPage.HideCard.SendToIdp";
+    var hideSendToIdpBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideSendToIdpBlockAttributeName);
+
+    const string hideSpBlockAttributeName = "ExternalAuthSSOPage.HideCard.Sp";
+    var hideSpBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideSpBlockAttributeName);
+
+    const string hideClaimsBlockAttributeName = "ExternalAuthSSOPage.HideCard.Claims";
+    var hideClaimsBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideClaimsBlockAttributeName);
+
+    const string hideProvisioningBlockAttributeName = "ExternalAuthSSOPage.HideCard.Provisioning";
+    var hideProvisioningBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideProvisioningBlockAttributeName);
+
+    const string hideRedirectsBlockAttributeName = "ExternalAuthSSOPage.HideCard.Redirects";
+    var hideRedirectsBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideRedirectsBlockAttributeName);
+
+    const string hideCustomAttrsBlockAttributeName = "ExternalAuthSSOPage.HideCard.CustomAttrs";
+    var hideCustomAttrsBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideCustomAttrsBlockAttributeName);
+
+    const string hideBypassBlockAttributeName = "ExternalAuthSSOPage.HideCard.Bypass";
+    var hideBypassBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideBypassBlockAttributeName);
+
+    const string hideAuditBlockAttributeName = "ExternalAuthSSOPage.HideCard.Audit";
+    var hideAuditBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideAuditBlockAttributeName);
+
+    const string hideTestBlockAttributeName = "ExternalAuthSSOPage.HideCard.Test";
+    var hideTestBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideTestBlockAttributeName);
+
+    const string hideMockBlockAttributeName = "ExternalAuthSSOPage.HideCard.Mock";
+    var hideMockBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideMockBlockAttributeName);
+}
+
+<form asp-controller="ExternalAuthSSO" asp-action="Configure" method="post">
+    @*
+        Action bar — Save button rendered in the upper-right corner per AGENTS.md §9.4.
+        Per-store deletion is handled by nop's standard "override-for-store" pattern
+        (uncheck the override on a field + save), so there is no Delete button here.
+    *@
+
+<div class="content-header clearfix">
+        <h1 class="float-left">
+            SSO External Authentication Configuration
+        </h1>
+    <div class="float-right">
+        <button type="submit" name="save" class="btn btn-primary">
+            <i class="far fa-floppy-disk"></i> @T("Admin.Common.Save")
+        </button>
+    </div>
+</div>
+
+    <section class="content">
+        <div class="container-fluid">
+            <div class="form-horizontal">
+                @*
+                    Standard nop store-scope picker. Drops the "All stores" + each-store
+                    dropdown at the top; changing it navigates to ?storeid={id}.
+                    IStoreContext.GetActiveStoreScopeConfigurationAsync reads the scope on
+                    the next request. When scope = 0 ("All stores") the view hides every
+                    per-store card so only the system-wide settings (Login Bypass, Audit
+                    Logging) render and the factory only saves SsoSystemSettings. When
+                    scope > 0 the per-store cards are visible (no override checkboxes —
+                    the override is implicit) and the factory saves SsoConfigurationSettings
+                    for that store with overrideForStore = true PLUS the system-wide settings.
+                *@
+                @await Component.InvokeAsync(typeof(StoreScopeSSOViewComponent))
+
+                <div asp-validation-summary="All"></div>
+
+                <nop-cards id="ExternalAuthSSO-cards">
+                            
+                    @*
+                        Per-store cards. Only rendered when a<div asp-validation-summary="All"></div> specific store is selected
+                        (ActiveStoreScopeConfiguration > 0). "All stores" mode skips this
+                        block entirely and shows only the system-wide cards further down.
+                    *@
+                    @if (Model.ActiveStoreScopeConfiguration > 0)
+                    {
+
+                    @* ---------------- 1. General ---------------- *@
+                    <nop-card asp-name="microsoft-general" asp-icon="fas fa-sliders-h"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.General")"
+                              asp-hide-block-attribute-name="@hideGeneralBlockAttributeName"
+                              asp-hide="@hideGeneralBlock" asp-advanced="false">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="Protocol" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-select asp-for="Protocol" asp-items="Html.GetEnumSelectList<SsoProtocol>()" />
+                                    <span asp-validation-for="Protocol"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IsEnabled" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IsEnabled" />
+                                    <span asp-validation-for="IsEnabled"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpDisplayName" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IdpDisplayName" />
+                                    <span asp-validation-for="IdpDisplayName"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="BaseUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="BaseUrl" asp-required="true" />
+                                    <span asp-validation-for="BaseUrl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="DisplayOrder" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="DisplayOrder" />
+                                    <span asp-validation-for="DisplayOrder"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- OpenID Connect (v2-only) ---------------- *@
+                    <nop-card asp-name="microsoft-oidc" asp-icon="fas fa-id-card"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.OpenIdConnect")"
+                              asp-hide-block-attribute-name="@hideOidcBlockAttributeName"
+                              asp-hide="@hideOidcBlock" asp-advanced="false">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="Authority" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="Authority" asp-required="true" />
+                                    <span asp-validation-for="Authority"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="ClientId" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="ClientId" asp-required="true" />
+                                    <span asp-validation-for="ClientId"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="ClientSecret" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="ClientSecret" asp-required="true" html-attributes="@(new { type = "password", placeholder = Model.HasClientSecret ? T("Plugins.ExternalAuth.SSO.Common.SecretIsSet").Text : T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.ClientSecret.Hint")</small>
+                                    <span asp-validation-for="ClientSecret"></span>
+                                    @if (Model.HasClientSecret)
+                                    {
+                                        <div class="form-check mt-2 alert alert-warning py-1">
+                                            <input asp-for="ClearClientSecret" class="form-check-input" />
+                                            <label asp-for="ClearClientSecret" class="form-check-label">
+                                                <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="CallbackPath" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="CallbackPath" />
+                                    <span asp-validation-for="CallbackPath"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="Scopes" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="Scopes" />
+                                    <span asp-validation-for="Scopes"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 2. Identity Provider (Azure AD / Entra) ---------------- *@
+                    <nop-card asp-name="microsoft-idp" asp-icon="fas fa-shield-halved"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.IdentityProvider")"
+                              asp-hide-block-attribute-name="@hideIdpBlockAttributeName"
+                              asp-hide="@hideIdpBlock" asp-advanced="false">
+                        <div class="card-body">
+
+                            @* IdP metadata import (M7) lives here so admins can prefill the four IdP fields from federation XML. *@
+                            <div class="card card-default border-info mb-3">
+                                <div class="card-header bg-info text-white">
+                                    <i class="fas fa-file-import"></i>
+                                    @T("Plugins.ExternalAuth.SSO.IdpMetadata.Title")
+                                </div>
+                                <div class="card-body">
+                                    <p class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.IdpMetadata.Hint")</p>
+                                    <div class="form-group row">
+                                        <label class="col-md-3 col-form-label" for="IdpMetadataUrlImport">
+                                            @T("Plugins.ExternalAuth.SSO.IdpMetadata.UrlLabel")
+                                        </label>
+                                        <div class="col-md-9">
+                                            <input type="url" class="form-control" id="IdpMetadataUrlImport"
+                                                   placeholder="https://login.microsoftonline.com/&lt;tenant&gt;/federationmetadata/2007-06/federationmetadata.xml" />
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-md-3 col-form-label" for="IdpMetadataFileImport">
+                                            @T("Plugins.ExternalAuth.SSO.IdpMetadata.FileLabel")
+                                        </label>
+                                        <div class="col-md-9">
+                                            <input type="file" class="form-control-file" id="IdpMetadataFileImport" accept=".xml,application/xml,text/xml" />
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <div class="col-md-9 offset-md-3">
+                                            <button type="button" class="btn btn-info" id="btnImportIdpMetadata">
+                                                <i class="fas fa-download"></i>
+                                                @T("Plugins.ExternalAuth.SSO.IdpMetadata.ImportButton")
+                                            </button>
+                                            <span id="IdpMetadataImportStatus" class="ml-3"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpSsoUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IdpSsoUrl" asp-required="true" />
+                                    <span asp-validation-for="IdpSsoUrl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpEntityId" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IdpEntityId" asp-required="true" />
+                                    <span asp-validation-for="IdpEntityId"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpCertificateBase64" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-textarea asp-for="IdpCertificateBase64" asp-required="true" html-attributes="@(new { rows = "4", placeholder = string.IsNullOrEmpty(Model.IdpCertificatePreview) ? T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text : Model.IdpCertificatePreview })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.IdpCertificateBase64.Hint")</small>
+                                    <span asp-validation-for="IdpCertificateBase64"></span>
+                                    @if (!string.IsNullOrEmpty(Model.IdpCertificatePreview))
+                                    {
+                                        <div class="form-check mt-2 alert alert-warning py-1">
+                                            <input asp-for="ClearIdpCertificate" class="form-check-input" />
+                                            <label asp-for="ClearIdpCertificate" class="form-check-label">
+                                                <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredIdpCertOnSave")
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpSloUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IdpSloUrl" />
+                                    <span asp-validation-for="IdpSloUrl"></span>
+                                    @if (string.IsNullOrWhiteSpace(Model.IdpSloUrl))
+                                    {
+                                        <div class="alert alert-warning mt-2 mb-0">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            @T("Plugins.ExternalAuth.SSO.Cards.IdentityProvider.SloNotConfigured")
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="IdpMetadataUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="IdpMetadataUrl" />
+                                    <span asp-validation-for="IdpMetadataUrl"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 3. Send these to your IdP team ---------------- *@
+                    <nop-card asp-name="microsoft-sendtoIdp" asp-icon="fas fa-paper-plane"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.SendToIdpTeam")"
+                              asp-hide-block-attribute-name="@hideSendToIdpBlockAttributeName"
+                              asp-hide="@hideSendToIdpBlock" asp-advanced="false">
+                        <div class="card-body">
+                            <p class="form-text text-muted mb-3">
+                                @T("Plugins.ExternalAuth.SSO.Cards.SendToIdpTeam.Hint")
+                            </p>
+
+                            <div class="form-group row">
+                                <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.OnboardingReport.Label")</label>
+                                <div class="col-md-9">
+                                    <div class="mb-2">
+                                        <button type="button" class="btn btn-default" id="btnRefreshOnboardingReport">
+                                            <i class="fas fa-sync-alt"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.RefreshButton")
+                                        </button>
+                                        <button type="button" class="btn btn-primary" id="btnCopyOnboardingReport">
+                                            <i class="fas fa-clipboard"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.CopyButton")
+                                        </button>
+                                        <a class="btn btn-default" asp-action="OnboardingReport" target="_blank">
+                                            <i class="fas fa-download"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.DownloadButton")
+                                        </a>
+                                    </div>
+                                    <textarea id="OnboardingReportText" class="form-control" rows="10" readonly
+                                              style="font-family: monospace; font-size: 0.85em;">@T("Plugins.ExternalAuth.SSO.OnboardingReport.Hint").Text</textarea>
+                                </div>
+                            </div>
+
+                            @*
+                                Protocol-aware quick-reference URLs. Both sections render; the
+                                protocol-visibility JS at the bottom of the page hides whichever
+                                doesn't apply. When Protocol = Off both stay visible (matches the
+                                "show everything when Off" rule for the rest of the page).
+                            *@
+
+                            @* --- SAML: SP Metadata URL ------------------------------------- *@
+                            <div id="sendToIdp-saml-section">
+                                <div class="form-group row">
+                                    <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl")</label>
+                                    <div class="col-md-9">
+                                        @{
+                                            var spMetadataUrl = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                                                ? "(set Base URL first)"
+                                                : Model.BaseUrl.TrimEnd('/') + "/saml/metadata";
+                                        }
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" readonly value="@spMetadataUrl" id="SpMetadataUrlField" />
+                                            <div class="input-group-append">
+                                                <a class="btn btn-default" href="@spMetadataUrl" target="_blank">
+                                                    <i class="fas fa-external-link-alt"></i> @T("Admin.Common.Open")
+                                                </a>
+                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('SpMetadataUrlField')">
+                                                    <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl.Hint")</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @* --- OIDC: Redirect URI + Post-logout Redirect URI ------------- *@
+                            @* These are the two URLs the IdP team must paste into the Entra app *@
+                            @* registration's Authentication blade. Computed from BaseUrl +       *@
+                            @* CallbackPath / + the OIDC signed-out callback constant.            *@
+                            <div id="sendToIdp-oidc-section">
+                                @{
+                                    var oidcRedirectUri = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                                        ? "(set Base URL first)"
+                                        : Model.BaseUrl.TrimEnd('/') + (string.IsNullOrWhiteSpace(Model.CallbackPath) ? "/signin-microsoft" : Model.CallbackPath);
+
+                                    var oidcPostLogoutUri = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                                        ? "(set Base URL first)"
+                                        : Model.BaseUrl.TrimEnd('/') + Nop.Plugin.ExternalAuth.SSO.Constants.SSOAuthenticationDefaults.OidcSignedOutCallbackPath;
+                                }
+                                <div class="form-group row">
+                                    <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.OidcRedirectUri")</label>
+                                    <div class="col-md-9">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" readonly value="@oidcRedirectUri" id="OidcRedirectUriField" />
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('OidcRedirectUriField')">
+                                                    <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.OidcRedirectUri.Hint")</small>
+                                    </div>
+                                </div>
+
+                                <div class="form-group row">
+                                    <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.OidcPostLogoutRedirectUri")</label>
+                                    <div class="col-md-9">
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" readonly value="@oidcPostLogoutUri" id="OidcPostLogoutRedirectUriField" />
+                                            <div class="input-group-append">
+                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('OidcPostLogoutRedirectUriField')">
+                                                    <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.OidcPostLogoutRedirectUri.Hint")</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 4. Service Provider (This Application) ---------------- *@
+                    <nop-card asp-name="microsoft-sp" asp-icon="fas fa-server"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.ServiceProvider")"
+                              asp-hide-block-attribute-name="@hideSpBlockAttributeName"
+                              asp-hide="@hideSpBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="AcsUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="AcsUrl" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.AcsUrl.Hint")</small>
+                                    <span asp-validation-for="AcsUrl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SpEntityId" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="SpEntityId" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpEntityId.Hint")</small>
+                                    <span asp-validation-for="SpEntityId"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SpLogoutUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="SpLogoutUrl" />
+                                    <span asp-validation-for="SpLogoutUrl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SignedRequest" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="SignedRequest" />
+                                    <span asp-validation-for="SignedRequest"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SignLogoutRequest" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="SignLogoutRequest" />
+                                    <span asp-validation-for="SignLogoutRequest"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="EncryptedAssertion" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="EncryptedAssertion" />
+                                    <span asp-validation-for="EncryptedAssertion"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SpPfxBase64" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-textarea asp-required="true" asp-for="SpPfxBase64" html-attributes="@(new { rows = "3", placeholder = string.IsNullOrEmpty(Model.SpPfxPreview) ? T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text : Model.SpPfxPreview })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpPfxBase64.Hint")</small>
+                                    <span asp-validation-for="SpPfxBase64"></span>
+                                    @if (!string.IsNullOrEmpty(Model.SpPfxPreview))
+                                    {
+                                        <div class="form-check mt-2 alert alert-warning py-1">
+                                            <input asp-for="ClearSpPfx" class="form-check-input" />
+                                            <label asp-for="ClearSpPfx" class="form-check-label">
+                                                <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SpPfxPassword" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-required="true" asp-for="SpPfxPassword" html-attributes="@(new { type = "password", placeholder = Model.HasSpPfxPassword ? T("Plugins.ExternalAuth.SSO.Common.SecretIsSet").Text : T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpPfxPassword.Hint")</small>
+                                    <span asp-validation-for="SpPfxPassword"></span>
+                                    @if (Model.HasSpPfxPassword)
+                                    {
+                                        <div class="form-check mt-2 alert alert-warning py-1">
+                                            <input asp-for="ClearSpPfxPassword" class="form-check-input" />
+                                            <label asp-for="ClearSpPfxPassword" class="form-check-label">
+                                                <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 5. Claim Mapping ---------------- *@
+                    <nop-card asp-name="microsoft-claims" asp-icon="fas fa-tags"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.ClaimMapping")"
+                              asp-hide-block-attribute-name="@hideClaimsBlockAttributeName"
+                              asp-hide="@hideClaimsBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="EmailClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="EmailClaimType" />
+                                    <span asp-validation-for="EmailClaimType"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="UsernameClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="UsernameClaimType" />
+                                    <span asp-validation-for="UsernameClaimType"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="FirstNameClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="FirstNameClaimType" />
+                                    <span asp-validation-for="FirstNameClaimType"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="LastNameClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="LastNameClaimType" />
+                                    <span asp-validation-for="LastNameClaimType"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="GroupsClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="GroupsClaimType" />
+                                    <span asp-validation-for="GroupsClaimType"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 6. User Provisioning ---------------- *@
+                    <nop-card asp-name="microsoft-provisioning" asp-icon="fas fa-user-plus"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.UserProvisioning")"
+                              asp-hide-block-attribute-name="@hideProvisioningBlockAttributeName"
+                              asp-hide="@hideProvisioningBlock" asp-advanced="false">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="AutoRegister" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="AutoRegister" />
+                                    <span asp-validation-for="AutoRegister"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SelectedCustomerRoleIds" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-select asp-for="SelectedCustomerRoleIds" asp-items="Model.AvailableCustomerRoles" asp-multiple="true" />
+                                </div>
+                                <div class="input-group-btn">
+                                    <nop-required />
+                                </div>
+
+                                <script>
+                                    $(function() {
+                                        var customerRoleIdsInput = $('#@Html.IdFor(model => model.SelectedCustomerRoleIds)').select2({
+                                            closeOnSelect: false,
+                                            @if (!Model.AvailableCustomerRoles.Any())
+                                            {
+                                            <text>
+                                            disabled: true,
+                                            placeholder: '@T("Admin.Customers.Customers.Fields.CustomerRoles.NoRoles")',
+                                            </text>
+                                            }
+                                        });
+                                    });
+                                </script>
+                            </div>
+
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="AllowedEmailDomains" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="AllowedEmailDomains" />
+                                    <span asp-validation-for="AllowedEmailDomains"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="RefreshRolesOnLogin" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="RefreshRolesOnLogin" />
+                                    <span asp-validation-for="RefreshRolesOnLogin"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="RedirectLoginToSso" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="RedirectLoginToSso" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.RedirectLoginToSso.Hint")</small>
+                                    <span asp-validation-for="RedirectLoginToSso"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 7. Bindings & Redirects ---------------- *@
+                    <nop-card asp-name="microsoft-redirects" asp-icon="fas fa-route"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.BindingsRedirects")"
+                              asp-hide-block-attribute-name="@hideRedirectsBlockAttributeName"
+                              asp-hide="@hideRedirectsBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="LoginBinding" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="LoginBinding" />
+                                    <span asp-validation-for="LoginBinding"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="LogoutBinding" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="LogoutBinding" />
+                                    <span asp-validation-for="LogoutBinding"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="PostLoginRedirectUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="PostLoginRedirectUrl" />
+                                    <span asp-validation-for="PostLoginRedirectUrl"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="PostLogoutRedirectUrl" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="PostLogoutRedirectUrl" />
+                                    <span asp-validation-for="PostLogoutRedirectUrl"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 8. Custom Attributes (JSON) ---------------- *@
+                    <nop-card asp-name="microsoft-customattrs" asp-icon="fas fa-code"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.CustomAttributes")"
+                              asp-hide-block-attribute-name="@hideCustomAttrsBlockAttributeName"
+                              asp-hide="@hideCustomAttrsBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="CustomAttributesJson" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-textarea asp-for="CustomAttributesJson"
+                                                  html-attributes="@(new { rows = "4", placeholder = "{ \"key\": \"value\" }" })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.CustomAttributesJson.Hint")</small>
+                                    <span asp-validation-for="CustomAttributesJson"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    } @* end @if (ActiveStoreScopeConfiguration > 0) — per-store cards 1-8 *@
+
+                    @*
+                        System-wide cards (Login Bypass + Audit Logging). Rendered ONLY when
+                        "All Stores" is selected (scope = 0). On a specific store these are
+                        hidden — the admin must switch the picker to "All Stores" to edit
+                        them. The factory still saves them at storeId=0 regardless.
+                    *@
+                    @if (Model.ActiveStoreScopeConfiguration == 0)
+                    {
+
+                    @* ---------------- 9. Login Bypass (System-wide) ---------------- *@
+                    <nop-card asp-name="microsoft-bypass" asp-icon="fas fa-key"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.LoginBypass")"
+                              asp-hide-block-attribute-name="@hideBypassBlockAttributeName"
+                              asp-hide="@hideBypassBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="alert alert-warning">
+                                <strong><i class="fas fa-exclamation-triangle"></i> @T("Plugins.ExternalAuth.SSO.Cards.LoginBypass.WarningTitle")</strong>
+                                @Html.Raw(T("Plugins.ExternalAuth.SSO.Cards.LoginBypass.WarningBody"))
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="SsoBypassToken" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="SsoBypassToken" html-attributes="@(new { type = "password", placeholder = Model.HasSsoBypassToken ? T("Plugins.ExternalAuth.SSO.Common.SecretIsSet").Text : T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text })" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SsoBypassToken.Hint")</small>
+                                    <span asp-validation-for="SsoBypassToken"></span>
+                                    @if (Model.HasSsoBypassToken)
+                                    {
+                                        <div class="form-check mt-2 alert alert-warning py-1">
+                                            <input asp-for="ClearSsoBypassToken" class="form-check-input" />
+                                            <label asp-for="ClearSsoBypassToken" class="form-check-label">
+                                                <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="LocalLoginAllowedRoles" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="LocalLoginAllowedRoles" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.LocalLoginAllowedRoles.Hint")</small>
+                                    <span asp-validation-for="LocalLoginAllowedRoles"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="LoginAttemptCapPerHour" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="LoginAttemptCapPerHour" />
+                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.LoginAttemptCapPerHour.Hint")</small>
+                                    <span asp-validation-for="LoginAttemptCapPerHour"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    @* ---------------- 10. Audit Logging (System-wide) ---------------- *@
+                    <nop-card asp-name="microsoft-audit" asp-icon="fas fa-clipboard-list"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.AuditLogging")"
+                              asp-hide-block-attribute-name="@hideAuditBlockAttributeName"
+                              asp-hide="@hideAuditBlock" asp-advanced="true">
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                @Html.Raw(T("Plugins.ExternalAuth.SSO.Cards.AuditLogging.InfoBody"))
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="EnableAuditLogging" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="EnableAuditLogging" />
+                                    <span asp-validation-for="EnableAuditLogging"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </nop-card>
+
+                    } @* end @if (ActiveStoreScopeConfiguration == 0) — system-wide cards *@
+
+                    @*
+                        Mock Mode + Test SSO Connection are per-store cards — only render when
+                        a specific store is selected.
+                    *@
+                    @if (Model.ActiveStoreScopeConfiguration > 0)
+                    {
+
+                    @* ---------------- Mock Mode (Dev only — DEBUG builds) ---------------- *@
+                    @* This card is rendered only when the plugin assembly was built with the    *@
+                    @* DEBUG symbol. Constant folding strips the @if block in Release builds, so *@
+                    @* admins on a Release deploy never see this UI and the EnableMockMode flag  *@
+                    @* has no effect (the MockSsoController is also #if DEBUG).                  *@
+                    if (Nop.Plugin.ExternalAuth.SSO.Constants.BuildInfo.IsDebugBuild)
+                    {
+                        <nop-card asp-name="microsoft-mock" asp-icon="fas fa-flask"
+                                  asp-title="@T("Plugins.ExternalAuth.SSO.Cards.MockMode")"
+                                  asp-hide-block-attribute-name="@hideMockBlockAttributeName"
+                                  asp-hide="@hideMockBlock" asp-advanced="false">
+                            <div class="card-body">
+                                <div class="alert alert-warning">
+                                    <strong><i class="fas fa-exclamation-triangle"></i> @T("Plugins.ExternalAuth.SSO.Cards.MockMode.WarningTitle")</strong>
+                                    @Html.Raw(T("Plugins.ExternalAuth.SSO.Cards.MockMode.WarningBody"))
+                                </div>
+                                <div class="form-group row">
+                                    <div class="col-md-3">
+                                    <nop-label asp-for="EnableMockMode" />
+                                    </div>
+                                    <div class="col-md-9">
+                                        <nop-editor asp-for="EnableMockMode" />
+                                        <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.EnableMockMode.Hint")</small>
+                                        <span asp-validation-for="EnableMockMode"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </nop-card>
+                    }
+
+                    @* ---------------- 11. Test SSO Connection ---------------- *@
+                    <nop-card asp-name="microsoft-test" asp-icon="fas fa-bolt"
+                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.TestConnection")"
+                              asp-hide-block-attribute-name="@hideTestBlockAttributeName"
+                              asp-hide="@hideTestBlock" asp-advanced="false">
+                        <div class="card-body">
+                            <p class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Hint")</p>
+                            <button type="button" class="btn btn-info" id="btnTestSsoConnection">
+                                <i class="fas fa-bolt"></i> @T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Button")
+                            </button>
+                            <div id="TestSsoConnectionResult" class="alert mt-3" style="display:none;"></div>
+                        </div>
+                    </nop-card>
+
+                    } @* end @if (ActiveStoreScopeConfiguration > 0) — Mock Mode + Test cards *@
+
+                </nop-cards>
+
+                @* Save button lives in the upper-right content-header above. *@
+            </div>
+        </div>
+    </section>
+</form>
+
+@*
+    Inline scripts — kept here so the page is self-contained.
+    1. IdP metadata import (M7) — POST to ImportIdpMetadata, prefill IdP fields.
+    2. Onboarding report — fetch + render + copy/refresh (M9 + M13).
+    3. Test SSO Connection — call M12 TestConnection for current scope.
+*@
+<script>
+    (function () {
+        function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function antiforgeryFormData() {
+            var fd = new FormData();
+            var token = document.querySelector('input[name="__RequestVerificationToken"]');
+            if (token) fd.append('__RequestVerificationToken', token.value);
+            return fd;
+        }
+
+        // --- IdP metadata import (M7) ----------------------------------------
+        var importBtn = document.getElementById('btnImportIdpMetadata');
+        if (importBtn) {
+            importBtn.addEventListener('click', function () {
+                var urlInput = document.getElementById('IdpMetadataUrlImport');
+                var fileInput = document.getElementById('IdpMetadataFileImport');
+                var status = document.getElementById('IdpMetadataImportStatus');
+                var fd = antiforgeryFormData();
+                if (fileInput.files && fileInput.files.length > 0) fd.append('file', fileInput.files[0]);
+                else if (urlInput.value && urlInput.value.trim() !== '') fd.append('url', urlInput.value.trim());
+                else { status.innerHTML = '<span class="text-danger">@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.NoInput")</span>'; return; }
+
+                status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> @T("Plugins.ExternalAuth.SSO.IdpMetadata.Importing")';
+                importBtn.disabled = true;
+                fetch('@Url.Action("ImportIdpMetadata", "ExternalAuthSSO")', { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        importBtn.disabled = false;
+                        if (!data || !data.success) {
+                            status.innerHTML = '<span class="text-danger">' + escapeHtml((data && data.error) || '@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.Generic")') + '</span>';
+                            return;
+                        }
+                        var r = data.result;
+                        if (r.idpEntityId) document.getElementById('IdpEntityId').value = r.idpEntityId;
+                        if (r.idpSsoUrl) document.getElementById('IdpSsoUrl').value = r.idpSsoUrl;
+                        if (r.idpSloUrl) document.getElementById('IdpSloUrl').value = r.idpSloUrl;
+                        if (r.idpCertificateBase64) { var c = document.getElementById('IdpCertificateBase64'); if (c) c.value = r.idpCertificateBase64; }
+                        status.innerHTML = '<span class="text-success"><i class="fas fa-check"></i> @T("Plugins.ExternalAuth.SSO.IdpMetadata.Imported")</span>';
+                    })
+                    .catch(function (err) {
+                        importBtn.disabled = false;
+                        status.innerHTML = '<span class="text-danger">' + escapeHtml(err.message || '@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.Generic")') + '</span>';
+                    });
+            });
+        }
+
+        // --- Onboarding report (M9 + M13) ------------------------------------
+        var refreshBtn = document.getElementById('btnRefreshOnboardingReport');
+        var copyBtn = document.getElementById('btnCopyOnboardingReport');
+        var textArea = document.getElementById('OnboardingReportText');
+
+        function loadOnboardingReport() {
+            if (!textArea) return;
+            textArea.value = '@T("Plugins.ExternalAuth.SSO.OnboardingReport.Loading")';
+            fetch('@Url.Action("OnboardingReport", "ExternalAuthSSO")', { credentials: 'same-origin' })
+                .then(function (r) { return r.text(); })
+                .then(function (txt) { textArea.value = txt; })
+                .catch(function (err) { textArea.value = err.message || '@T("Plugins.ExternalAuth.SSO.OnboardingReport.Error")'; });
+        }
+
+        if (refreshBtn) refreshBtn.addEventListener('click', loadOnboardingReport);
+        if (textArea) loadOnboardingReport();
+
+        if (copyBtn && textArea) {
+            copyBtn.addEventListener('click', function () {
+                textArea.select();
+                document.execCommand('copy');
+            });
+        }
+
+        // --- Protocol-aware card visibility ---------------------------------
+        // When OpenID Connect is selected, hide the SAML-only cards (Identity
+        // Provider, Send to IdP team, Service Provider) and the SAML-only
+        // binding rows inside the mixed "Bindings & Redirects" card. When
+        // SAML 2.0 is selected, hide the OpenID Connect card. When Off,
+        // show everything so the admin can pre-fill before flipping protocol on.
+        // Enum values mirror Nop.Plugin.ExternalAuth.SSO.Settings.SsoProtocol:
+        // Off = 0, OpenIdConnect = 1, Saml2 = 2.
+        var protocolSelect = document.getElementById('Protocol');
+        if (protocolSelect) {
+            // Whole cards hidden by protocol. microsoft-sendtoIdp stays visible for both
+            // OIDC and SAML now that it carries protocol-aware inner sections — the
+            // inner-container lists below toggle which one shows.
+            var samlCardIds = ['microsoft-idp', 'microsoft-sp'];
+            var oidcCardIds = ['microsoft-oidc'];
+
+            // Arbitrary container divs hidden by protocol (used for inner sections that
+            // live inside a card kept visible for both protocols, e.g. Send-to-IdP team).
+            var samlOnlyContainerIds = ['sendToIdp-saml-section'];
+            var oidcOnlyContainerIds = ['sendToIdp-oidc-section'];
+
+            // Individual form-group rows hidden by protocol — resolved by walking up from
+            // the input id to its enclosing .form-group.
+            var samlOnlyFieldIds = ['LoginBinding', 'LogoutBinding'];
+
+            function setVisible(el, visible) {
+                if (el) el.style.display = visible ? '' : 'none';
+            }
+
+            function rowFor(fieldId) {
+                var input = document.getElementById(fieldId);
+                return input ? input.closest('.form-group') : null;
+            }
+
+            function applyProtocolVisibility() {
+                var p = parseInt(protocolSelect.value, 10);
+                var showOidc = p !== 2; // hide OIDC content when SAML selected
+                var showSaml = p !== 1; // hide SAML content when OIDC selected
+                oidcCardIds.forEach(function (id) { setVisible(document.getElementById(id), showOidc); });
+                samlCardIds.forEach(function (id) { setVisible(document.getElementById(id), showSaml); });
+                oidcOnlyContainerIds.forEach(function (id) { setVisible(document.getElementById(id), showOidc); });
+                samlOnlyContainerIds.forEach(function (id) { setVisible(document.getElementById(id), showSaml); });
+                samlOnlyFieldIds.forEach(function (id) { setVisible(rowFor(id), showSaml); });
+            }
+
+            applyProtocolVisibility();
+            protocolSelect.addEventListener('change', applyProtocolVisibility);
+        }
+
+        // --- Test SSO Connection (M12 + M14 handshake) -----------------------
+        // Renders the existing legacy-style banner + a per-check handshake panel
+        // (EntityID / SSO URL / SLO URL / Certificate) when the handshake actually ran.
+        // SkippedReason → muted "handshake not attempted" notice so the admin knows the
+        // basic checks ran but the cryptographic match did not.
+        var testBtn = document.getElementById('btnTestSsoConnection');
+        if (testBtn) {
+            testBtn.addEventListener('click', function () {
+                var result = document.getElementById('TestSsoConnectionResult');
+                var storeId = @Model.ActiveStoreScopeConfiguration;
+                result.style.display = 'block';
+                result.className = 'alert alert-info mt-3';
+                result.innerHTML = '<i class="fas fa-spinner fa-spin"></i> @T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Running")';
+                var fd = antiforgeryFormData();
+                fd.append('storeId', storeId);
+                fetch('@Url.Action("TestConnection", "ExternalAuthSSO")', { method: 'POST', body: fd, credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        result.className = 'alert mt-3 ' + (data.success ? 'alert-success' : 'alert-danger');
+                        result.innerHTML = renderTestResult(data);
+                    })
+                    .catch(function (err) {
+                        result.className = 'alert mt-3 alert-danger';
+                        result.textContent = err.message || 'Test connection request failed.';
+                    });
+            });
+        }
+
+        function renderTestResult(data) {
+            var html = '<strong>' + (data.success ? '✓' : '✗') + '</strong> ' + escapeHtml(data.message || '');
+            if (data.details) html += '<pre class="mt-2 mb-2" style="white-space:pre-wrap;">' + escapeHtml(data.details) + '</pre>';
+
+            var h = data.handshake;
+            if (!h) return html;
+
+            if (h.skippedReason) {
+                html += '<div class="mt-2"><em class="text-muted">'
+                     + '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeSkipped"): '
+                     + escapeHtml(h.skippedReason) + '</em></div>';
+                return html;
+            }
+
+            html += '<div class="mt-3"><strong>@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeTitle"):</strong>';
+            html += '<ul class="list-unstyled mb-0 mt-1">';
+            html += handshakeCheckRow(h.entityIdMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.EntityId")');
+            html += handshakeCheckRow(h.ssoUrlMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SsoUrl")');
+            html += handshakeCheckRow(h.sloUrlMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SloUrl")');
+            html += handshakeCheckRow(h.certificateMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.Certificate")');
+            html += '</ul></div>';
+
+            if (h.signingKeyThumbprints && h.signingKeyThumbprints.length > 0) {
+                html += '<div class="mt-3"><strong>@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.MetadataThumbprints"):</strong>';
+                html += '<ul class="small mb-0 mt-1" style="font-family: monospace;">';
+                h.signingKeyThumbprints.forEach(function (t) {
+                    html += '<li>' + escapeHtml(t) + '</li>';
+                });
+                html += '</ul></div>';
+            }
+            return html;
+        }
+
+        function handshakeCheckRow(passed, label) {
+            var icon = passed
+                ? '<i class="fas fa-check-circle text-success"></i>'
+                : '<i class="fas fa-times-circle text-danger"></i>';
+            return '<li>' + icon + ' ' + label + '</li>';
+        }
+    })();
+
+    // Generic "Copy" helper for the readonly URL fields in the Send-to-IdP card
+    // (SAML SP metadata URL, OIDC Redirect URI, OIDC Post-logout Redirect URI).
+    // Called inline from onclick="copyReadonlyField('FieldId')".
+    function copyReadonlyField(fieldId) {
+        var field = document.getElementById(fieldId);
+        if (!field) return;
+        field.select();
+        document.execCommand('copy');
+    }
+
+</script>
