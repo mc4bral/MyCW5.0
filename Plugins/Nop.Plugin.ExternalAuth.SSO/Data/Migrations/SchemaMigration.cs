@@ -11,7 +11,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Data.Migrations;
 /// </summary>
 /// <remarks>
 /// Creates the audit log and group→role mapping tables and their supporting indexes
-/// (audit grid pagination per SSOPlan.v2.md §3.2 — resolves legacy P2-25).
+/// (the audit grid pages by store and date).
 /// Reversal of all <c>Create.*</c> expressions is handled by
 /// <see cref="AutoReversingMigration"/>; on plugin uninstall the indexes and tables
 /// are dropped in reverse order.

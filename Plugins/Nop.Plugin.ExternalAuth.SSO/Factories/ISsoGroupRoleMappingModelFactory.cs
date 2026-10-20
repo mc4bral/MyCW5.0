@@ -4,7 +4,7 @@ using Nop.Plugin.ExternalAuth.SSO.Models;
 namespace Nop.Plugin.ExternalAuth.SSO.Factories;
 
 /// <summary>
-/// Prepares view models for the Group → Role Mapping admin pages (M3).
+/// Prepares view models for the Group → Role Mapping admin pages.
 /// </summary>
 public interface ISsoGroupRoleMappingModelFactory
 {

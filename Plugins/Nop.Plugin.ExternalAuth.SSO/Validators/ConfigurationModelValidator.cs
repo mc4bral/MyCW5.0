@@ -14,10 +14,9 @@ namespace Nop.Plugin.ExternalAuth.SSO.Validators;
 /// Auto-discovered by nopCommerce's FluentValidation registration (the type is in the
 /// plugin's assembly which is scanned at startup).
 ///
-/// M2.b scope: required-when-enabled rules per protocol selection, plus URL well-formedness
-/// for URL fields. Stricter rules (Entra Object ID format on group mappings, claim type
-/// allowlists, email-domain wildcard syntax) land in later milestones alongside the
-/// features that depend on them.
+/// Required-when-enabled rules per protocol selection, plus URL well-formedness
+/// for URL fields, and a non-negative audit retention. Group-mapping values are validated by
+/// <see cref="SsoGroupRoleMappingModelValidator"/>; claim types and email domains are free text.
 /// </remarks>
 public class ConfigurationModelValidator : BaseNopValidator<ConfigurationModel>
 {
@@ -25,6 +24,10 @@ public class ConfigurationModelValidator : BaseNopValidator<ConfigurationModel>
     {
         // BaseUrl is required when the plugin is enabled (the SAML SP endpoints and OIDC
         // callback are constructed off it).
+        RuleFor(m => m.AuditRetentionDays)
+            .GreaterThanOrEqualTo(0)
+            .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.AuditRetentionDays.Invalid"));
+
         RuleFor(m => m.BaseUrl)
             .NotEmpty()
             .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.BaseUrl.Required"))

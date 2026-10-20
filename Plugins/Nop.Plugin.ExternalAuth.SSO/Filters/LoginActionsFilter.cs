@@ -16,7 +16,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Filters;
 /// a valid <c>?ssobypass=&lt;token&gt;</c> or the bypass cookie is already present.
 /// </summary>
 /// <remarks>
-/// See SSOPlan.v2.md §3.7. Controller/action are matched by string so the plugin does not
+/// See References/SSO_Plugin_Reference.md §6. Controller/action are matched by string so the plugin does not
 /// need a project reference to <c>Nop.Web</c> (designs out legacy P0-7/P0-8). All
 /// dependencies are constructor-injected per AGENTS.md §4.
 /// </remarks>
@@ -24,10 +24,10 @@ public class LoginActionsFilter : IAsyncActionFilter
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly ISsoSecretsService _secretsService;
-    private readonly IStoreContext _storeContext;
-    private readonly IUrlHelperFactory _urlHelperFactory;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoSecretsService _secretsService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IUrlHelperFactory _urlHelperFactory;
 
     #endregion
 
@@ -62,7 +62,7 @@ public class LoginActionsFilter : IAsyncActionFilter
         var perStore = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
 
         // SSO not active for this store — standard login form renders normally.
-        // Or the admin opted out of the auto-redirect via RedirectLoginToSso (M13) —
+        // Or the admin opted out of the auto-redirect via RedirectLoginToSso —
         // SSO is still available via the public "Sign in with Microsoft" button on the
         // login page, but /login itself stays on the standard local form.
         if (!perStore.IsEnabled || perStore.Protocol == SsoProtocol.Off || !perStore.RedirectLoginToSso)

@@ -8,7 +8,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Domain;
 /// <remarks>
 /// Persisted to <c>SSO_AuthEvent</c> (see <see cref="Data.ExternalAuthSSONameCompatibility"/>).
 /// Written by the user-provisioning pipeline after every login attempt, link, auto-registration,
-/// SLO, bypass-denial, or failure. See SSOPlan.v2.md §3.9.
+/// SLO, bypass-denial, or failure. See References/SSO_Plugin_Reference.md §3.
 /// </remarks>
 public class SsoAuthEvent : BaseEntity
 {
@@ -28,7 +28,7 @@ public class SsoAuthEvent : BaseEntity
     public string CustomerEmail { get; set; } = string.Empty;
 
     /// <summary>
-    /// Event type discriminator (e.g. <c>Login</c>, <c>AutoRegistered</c>, <c>Linked</c>, <c>Slo</c>,
+    /// Event type discriminator (e.g. <c>Login</c>, <c>AutoRegistered</c>, <c>Linked</c>, <c>SignedIn</c>, <c>Slo</c>,
     /// <c>Failed</c>, <c>BypassDenied</c>).
     /// </summary>
     public string EventType { get; set; } = string.Empty;

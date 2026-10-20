@@ -4,7 +4,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 
 /// <summary>
 /// Aggregates per-store SSO configuration + runtime telemetry for the SSO Accounts admin
-/// list page (M12).
+/// list page.
 /// </summary>
 public interface ISsoStoreSummaryService
 {

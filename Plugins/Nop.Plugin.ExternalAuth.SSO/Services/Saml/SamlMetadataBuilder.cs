@@ -21,10 +21,10 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
 
     #region Fields
 
-    private readonly ISaml2ConfigurationFactory _configFactory;
-    private readonly ISettingService _settingService;
-    private readonly IStoreContext _storeContext;
-    private readonly IWebHelper _webHelper;
+    protected readonly ISaml2ConfigurationFactory _configFactory;
+    protected readonly ISettingService _settingService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IWebHelper _webHelper;
 
     #endregion
 
@@ -49,7 +49,7 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
     /// <inheritdoc />
     public async Task<IActionResult> BuildMetadataAsync()
     {
-        var config = await _configFactory.CreateForCurrentStoreAsync();
+        var config = await _configFactory.CreateForCurrentStoreAsync(SamlConfigPurpose.Metadata);
         var store = await _storeContext.GetCurrentStoreAsync();
         var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
 
@@ -80,14 +80,14 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
 
         // SLO advertised only when an SP logout URL is configured. IdPs will only invoke
         // SLO if it appears in the metadata — keeping it conditional avoids advertising a
-        // capability the plugin doesn't yet honour in M6.b.
+        // logout endpoint nobody configured.
         if (spLogoutUrl is not null)
         {
             spDescriptor.SingleLogoutServices = new[]
             {
                 new SingleLogoutService
                 {
-                    Binding = IsPostBinding(settings.LogoutBinding)
+                    Binding = settings.LogoutBinding == SamlBinding.HttpPost
                         ? ProtocolBindings.HttpPost
                         : ProtocolBindings.HttpRedirect,
                     Location = spLogoutUrl
@@ -95,9 +95,9 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
             };
         }
 
-        // Advertise the SP's signing certificate when AuthnRequest signing is on, so the
+        // Advertise the SP's signing certificate when AuthnRequest or logout signing is on, so the
         // IdP can verify our requests. Same for encryption when EncryptedAssertion is on.
-        if (settings.SignedRequest && config.SigningCertificate is not null)
+        if (config.SigningCertificate is not null)
             spDescriptor.SigningCertificates = new[] { config.SigningCertificate };
 
         if (settings.EncryptedAssertion && config.DecryptionCertificates.Count > 0)
@@ -142,10 +142,6 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
 
         return new Uri(baseUrl + SSOAuthenticationDefaults.SamlLogoutPath);
     }
-
-    private static bool IsPostBinding(string? binding)
-        => !string.IsNullOrWhiteSpace(binding)
-           && binding.Contains("POST", StringComparison.OrdinalIgnoreCase);
 
     #endregion
 }

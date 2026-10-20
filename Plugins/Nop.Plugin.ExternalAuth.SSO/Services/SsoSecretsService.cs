@@ -7,25 +7,24 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 /// Default implementation of <see cref="ISsoSecretsService"/>.
 /// </summary>
 /// <remarks>
-/// Encryption order on <c>Protect</c>:
-/// <list type="number">
-///   <item><c>IDataProtector.Protect</c> with purpose <see cref="DataProtectionPurpose"/>;</item>
-///   <item><c>IEncryptionService.EncryptText</c> using nop's configured private key.</item>
-/// </list>
-/// Decryption on <c>Unprotect</c> reverses the order.
+/// Current format: <c>dp1:</c> + Data Protection ciphertext. The prefix says how a value was
+/// written, so the format can change again without guessing. Legacy format (no prefix): Data
+/// Protection ciphertext wrapped in nop's <c>IEncryptionService</c>; read only, rewritten by the
+/// plugin update (<c>SSOAuthenticationMethod.ReprotectLegacySecretsAsync</c>). Once no install
+/// holds legacy values, the legacy branch and the <see cref="IEncryptionService"/> dependency can go.
 /// </remarks>
 public class SsoSecretsService : ISsoSecretsService
 {
-    /// <summary>
-    /// Data Protection purpose string — never change without a key migration, otherwise
-    /// previously-stored ciphertext becomes unreadable.
-    /// </summary>
-    public const string DataProtectionPurpose = "Nop.Plugin.ExternalAuth.SSO.Settings.v1";
-
     #region Fields
 
-    private readonly IEncryptionService _encryptionService;
-    private readonly IDataProtector _dataProtector;
+    /// <summary>Data Protection purpose — changing it makes every stored secret unreadable.</summary>
+    public const string DataProtectionPurpose = "Nop.Plugin.ExternalAuth.SSO.Settings.v1";
+
+    /// <summary>Prefix of values in the current single-layer format.</summary>
+    public const string CurrentFormatPrefix = "dp1:";
+
+    protected readonly IEncryptionService _encryptionService;
+    protected readonly IDataProtector _dataProtector;
 
     #endregion
 
@@ -49,8 +48,7 @@ public class SsoSecretsService : ISsoSecretsService
         if (string.IsNullOrEmpty(plaintext))
             return string.Empty;
 
-        var protectedText = _dataProtector.Protect(plaintext);
-        return _encryptionService.EncryptText(protectedText);
+        return CurrentFormatPrefix + _dataProtector.Protect(plaintext);
     }
 
     /// <inheritdoc />
@@ -59,11 +57,11 @@ public class SsoSecretsService : ISsoSecretsService
         if (string.IsNullOrEmpty(ciphertext))
             return string.Empty;
 
-        // Outer layer first — nop's IEncryptionService throws if the configured key cannot decrypt.
-        var protectedText = _encryptionService.DecryptText(ciphertext);
+        if (ciphertext.StartsWith(CurrentFormatPrefix, StringComparison.Ordinal))
+            return _dataProtector.Unprotect(ciphertext[CurrentFormatPrefix.Length..]);
 
-        // Inner layer — IDataProtector throws CryptographicException on key-ring mismatch.
-        return _dataProtector.Unprotect(protectedText);
+        // Legacy: nop's IEncryptionService outside, Data Protection inside.
+        return _dataProtector.Unprotect(_encryptionService.DecryptText(ciphertext));
     }
 
     /// <inheritdoc />
@@ -80,6 +78,10 @@ public class SsoSecretsService : ISsoSecretsService
             return false;
         }
     }
+
+    /// <inheritdoc />
+    public bool IsCurrentFormat(string? ciphertext)
+        => string.IsNullOrEmpty(ciphertext) || ciphertext.StartsWith(CurrentFormatPrefix, StringComparison.Ordinal);
 
     #endregion
 }

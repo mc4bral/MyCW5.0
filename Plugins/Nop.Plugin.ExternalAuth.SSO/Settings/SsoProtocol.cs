@@ -4,7 +4,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Settings;
 /// The Single Sign-On protocol active for a store.
 /// </summary>
 /// <remarks>
-/// Per SSOPlan.v2.md decision row 3: exactly one protocol is active per store, selected by
+/// Exactly one protocol is active per store, selected by
 /// the admin via a dropdown on the Configure page. When <see cref="Off"/>, the public
 /// "Sign in with Microsoft" button does not render and <c>LoginActionsFilter</c> does not
 /// redirect to the external auth challenge.

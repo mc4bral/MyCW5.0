@@ -3,7 +3,7 @@ using Nop.Plugin.ExternalAuth.SSO.Models;
 namespace Nop.Plugin.ExternalAuth.SSO.Factories;
 
 /// <summary>
-/// Prepares view models for the SSO Accounts admin pages (M12).
+/// Prepares view models for the SSO Accounts admin pages.
 /// </summary>
 public interface ISsoStoreSummaryModelFactory
 {

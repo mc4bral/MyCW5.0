@@ -19,12 +19,12 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
 {
     #region Fields
 
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly ISaml2ConfigurationFactory _configFactory;
-    private readonly ISettingService _settingService;
-    private readonly ISsoEventService _eventService;
-    private readonly IStoreContext _storeContext;
-    private readonly IWebHelper _webHelper;
+    protected readonly IHttpContextAccessor _httpContextAccessor;
+    protected readonly ISaml2ConfigurationFactory _configFactory;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IWebHelper _webHelper;
 
     #endregion
 
@@ -84,10 +84,6 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
         await _eventService.LogAsync(
             eventType: SsoAuthEventTypes.Login,
             protocol: SsoProtocolNames.Saml2,
-            storeId: store.Id,
-            customerId: null,
-            customerEmail: string.Empty,
-            idpSubject: string.Empty,
             notes: $"SAML AuthnRequest id={requestId}");
 
         // Bind and return. Most Entra SAML apps use HTTP-Redirect for AuthnRequest; we
@@ -95,7 +91,7 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
         // ITfoxtec.Identity.Saml2.MvcCore only ships a ToActionResult() extension for
         // Saml2RedirectBinding — for POST binding we surface the auto-submitting form
         // HTML (PostContent) as a ContentResult.
-        if (IsPostBinding(settings.LoginBinding))
+        if (settings.LoginBinding == SamlBinding.HttpPost)
         {
             var postBinding = new Saml2PostBinding();
             postBinding.Bind(authnRequest);
@@ -127,10 +123,6 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
         return baseUrl + SSOAuthenticationDefaults.SamlAcsPath;
     }
 
-    private static bool IsPostBinding(string? binding)
-        => !string.IsNullOrWhiteSpace(binding)
-           && binding.Contains("POST", StringComparison.OrdinalIgnoreCase);
-
     private void IssueCorrelationCookie(string requestId, string? returnUrl)
     {
         var response = _httpContextAccessor.HttpContext?.Response;
@@ -141,17 +133,11 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
         var safeReturnUrl = returnUrl ?? string.Empty;
         var cookieValue = $"{requestId}|{Uri.EscapeDataString(safeReturnUrl)}";
 
+        // SameSite=None over HTTPS: the IdP returns with a cross-site POST (see SamlCookieOptions).
         response.Cookies.Append(
             SSOAuthenticationDefaults.SamlCorrelationCookieName,
             cookieValue,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = response.HttpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.Add(SSOAuthenticationDefaults.SamlCorrelationCookieLifetime),
-                IsEssential = true
-            });
+            SamlCookieOptions.For(response.HttpContext.Request, SSOAuthenticationDefaults.SamlCorrelationCookieLifetime));
     }
 
     #endregion

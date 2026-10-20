@@ -4,7 +4,7 @@ using Nop.Plugin.ExternalAuth.SSO.Domain;
 namespace Nop.Plugin.ExternalAuth.SSO.Services;
 
 /// <summary>
-/// CRUD + role-resolution surface over <see cref="SsoGroupRoleMapping"/> (M3).
+/// CRUD + role-resolution surface over <see cref="SsoGroupRoleMapping"/>.
 /// </summary>
 /// <remarks>
 /// The runtime hook is <see cref="ResolveCustomerRoleIdsAsync"/>: called from the
@@ -46,7 +46,7 @@ public interface ISsoGroupRoleMappingService
 
     /// <summary>
     /// The distinct <c>CustomerRole.Id</c> values that appear in any active mapping for
-    /// the store. Combined with the configured <c>DefaultRoleSystemName</c> this is the
+    /// the store. Combined with the configured <c>DefaultRoleIds</c> this is the
     /// plugin's "owned set" — the union of roles whose membership the plugin may add
     /// to or remove from on each login. Roles outside this set are never touched.
     /// </summary>

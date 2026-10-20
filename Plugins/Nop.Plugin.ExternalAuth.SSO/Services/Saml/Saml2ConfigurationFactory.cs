@@ -13,9 +13,9 @@ public class Saml2ConfigurationFactory : ISaml2ConfigurationFactory
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly ISsoSecretsService _secretsService;
-    private readonly IStoreContext _storeContext;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoSecretsService _secretsService;
+    protected readonly IStoreContext _storeContext;
 
     #endregion
 
@@ -36,7 +36,7 @@ public class Saml2ConfigurationFactory : ISaml2ConfigurationFactory
     #region Methods
 
     /// <inheritdoc />
-    public async Task<Saml2Configuration> CreateForCurrentStoreAsync()
+    public async Task<Saml2Configuration> CreateForCurrentStoreAsync(SamlConfigPurpose purpose = SamlConfigPurpose.Login)
     {
         var store = await _storeContext.GetCurrentStoreAsync();
         var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
@@ -74,33 +74,31 @@ public class Saml2ConfigurationFactory : ISaml2ConfigurationFactory
         }
 
         // IdP signing certificate — required for asserting signature/audience.
-        var idpCertPlaintext = _secretsService.TryUnprotect(settings.IdpCertificateBase64, out var idpCertB64)
-            ? idpCertB64
-            : throw new InvalidOperationException("Failed to decrypt the IdP signing certificate.");
+        if (!SsoCertificates.TryLoadIdpCertificate(_secretsService, settings, out var idpCertificate, out var certError))
+            throw new InvalidOperationException(certError);
 
-        config.SignatureValidationCertificates.Add(LoadCertificateFromBase64(idpCertPlaintext));
+        config.SignatureValidationCertificates.Add(idpCertificate!);
 
-        // SP PFX — required when AuthnRequest is signed or EncryptedAssertion is on.
-        if (settings.SignedRequest || settings.EncryptedAssertion)
+        // Whether this configuration signs what it binds. ITfoxtec signs any message whose
+        // configuration carries a SigningCertificate, so the certificate is attached only for
+        // the purpose whose flag is on — logout signing is independent of AuthnRequest signing.
+        var sign = purpose switch
+        {
+            SamlConfigPurpose.Logout => settings.SignLogoutRequest,
+            SamlConfigPurpose.Metadata => settings.SignedRequest || settings.SignLogoutRequest,
+            _ => settings.SignedRequest
+        };
+
+        // SP PFX — required when this configuration signs or EncryptedAssertion is on.
+        if (sign || settings.EncryptedAssertion)
         {
             if (string.IsNullOrWhiteSpace(settings.SpPfxBase64))
                 throw new InvalidOperationException(
-                    "SP signing PFX is required when SignedRequest or EncryptedAssertion is enabled.");
+                    "SP signing PFX is required when request signing or EncryptedAssertion is enabled.");
 
-            var pfxBytes = _secretsService.TryUnprotect(settings.SpPfxBase64, out var pfxB64)
-                ? Convert.FromBase64String(pfxB64)
-                : throw new InvalidOperationException("Failed to decrypt the SP signing PFX.");
+            var spCert = SsoCertificates.LoadSpPfx(_secretsService, settings);
 
-            var pfxPassword = _secretsService.TryUnprotect(settings.SpPfxPassword, out var pwd)
-                ? pwd
-                : string.Empty;
-
-            var spCert = X509CertificateLoader.LoadPkcs12(
-                pfxBytes,
-                pfxPassword,
-                X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
-
-            if (settings.SignedRequest)
+            if (sign)
                 config.SigningCertificate = spCert;
 
             if (settings.EncryptedAssertion)
@@ -112,27 +110,6 @@ public class Saml2ConfigurationFactory : ISaml2ConfigurationFactory
         // builder reads SsoConfigurationSettings directly when constructing the AuthnRequest.
 
         return config;
-    }
-
-    #endregion
-
-    #region Utilities
-
-    /// <summary>
-    /// Loads an X.509 certificate from a Base64-encoded DER string. Strips PEM headers if
-    /// present so admins who paste the PEM form by mistake still succeed.
-    /// </summary>
-    private static X509Certificate2 LoadCertificateFromBase64(string base64)
-    {
-        var trimmed = base64
-            .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
-            .Replace("-----END CERTIFICATE-----", string.Empty)
-            .Replace("\r", string.Empty)
-            .Replace("\n", string.Empty)
-            .Trim();
-
-        var bytes = Convert.FromBase64String(trimmed);
-        return X509CertificateLoader.LoadCertificate(bytes);
     }
 
     #endregion

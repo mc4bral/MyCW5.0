@@ -5,10 +5,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens.Saml2;
 using Nop.Core;
+using Nop.Core.Domain.Customers;
 using Nop.Plugin.ExternalAuth.SSO.Constants;
+using Nop.Plugin.ExternalAuth.SSO.Settings;
 using Nop.Services.Authentication;
 using Nop.Services.Common;
-using Nop.Services.Customers;
+using Nop.Services.Configuration;
+using Nop.Services.Helpers;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Services.Saml;
 
@@ -19,14 +22,15 @@ public class SamlLogoutHandler : ISamlLogoutHandler
 {
     #region Fields
 
-    private readonly IAuthenticationService _authenticationService;
-    private readonly ICustomerService _customerService;
-    private readonly IGenericAttributeService _genericAttributeService;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly ISaml2ConfigurationFactory _configFactory;
-    private readonly ISsoEventService _eventService;
-    private readonly IStoreContext _storeContext;
-    private readonly IWorkContext _workContext;
+    protected readonly IAuthenticationService _authenticationService;
+    protected readonly IGenericAttributeService _genericAttributeService;
+    protected readonly IHttpContextAccessor _httpContextAccessor;
+    protected readonly ISaml2ConfigurationFactory _configFactory;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IWebHelper _webHelper;
+    protected readonly IWorkContext _workContext;
 
     #endregion
 
@@ -34,22 +38,82 @@ public class SamlLogoutHandler : ISamlLogoutHandler
 
     public SamlLogoutHandler(
         IAuthenticationService authenticationService,
-        ICustomerService customerService,
         IGenericAttributeService genericAttributeService,
         IHttpContextAccessor httpContextAccessor,
         ISaml2ConfigurationFactory configFactory,
+        ISettingService settingService,
         ISsoEventService eventService,
         IStoreContext storeContext,
+        IWebHelper webHelper,
         IWorkContext workContext)
     {
         _authenticationService = authenticationService;
-        _customerService = customerService;
         _genericAttributeService = genericAttributeService;
         _httpContextAccessor = httpContextAccessor;
         _configFactory = configFactory;
+        _settingService = settingService;
         _eventService = eventService;
         _storeContext = storeContext;
+        _webHelper = webHelper;
         _workContext = workContext;
+    }
+
+    #endregion
+
+    #region Utilities
+
+    private async Task ClearSsoAttributesAsync(Customer customer)
+    {
+        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SamlNameId, null);
+        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SamlSessionIndex, null);
+        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SignInProtocol, null);
+        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.OidcIdToken, null);
+    }
+
+    private void IssueLogoutCorrelationCookie(string requestId)
+    {
+        var response = _httpContextAccessor.HttpContext?.Response;
+        if (response is null) return;
+
+        response.Cookies.Append(
+            SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName,
+            requestId,
+            SamlCookieOptions.For(response.HttpContext.Request, SSOAuthenticationDefaults.SamlCorrelationCookieLifetime));
+    }
+
+    private string? ReadLogoutCorrelationCookie()
+    {
+        var request = _httpContextAccessor.HttpContext?.Request;
+        return request?.Cookies.TryGetValue(SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName, out var v) == true
+            ? v
+            : null;
+    }
+
+    private void ClearLogoutCorrelationCookie()
+    {
+        var response = _httpContextAccessor.HttpContext?.Response;
+        response?.Cookies.Delete(
+            SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName,
+            SamlCookieOptions.For(response.HttpContext.Request));
+    }
+
+    /// <summary>Audit the failure and land the customer on the post-logout page.</summary>
+    private async Task<IActionResult> FailAsync(string reason, string detail)
+    {
+        await _eventService.LogFailureAsync(SsoProtocolNames.Saml2, reason, detail);
+        return new RedirectResult(await GetPostLogoutUrlAsync());
+    }
+
+    /// <summary>
+    /// Unbind a SAML message sent with either binding — IdPs differ, and some answer a
+    /// redirect-bound request with a POST.
+    /// </summary>
+    private static void UnbindEither(HttpRequest request, Saml2Request message)
+    {
+        if (request.HasFormContentType)
+            new Saml2PostBinding().Unbind(request.ToGenericHttpRequest(), message);
+        else
+            new Saml2RedirectBinding().Unbind(request.ToGenericHttpRequest(), message);
     }
 
     #endregion
@@ -57,32 +121,23 @@ public class SamlLogoutHandler : ISamlLogoutHandler
     #region Methods
 
     /// <inheritdoc />
-    public async Task<IActionResult> InitiateAsync()
+    public async Task<string> GetPostLogoutUrlAsync()
     {
         var store = await _storeContext.GetCurrentStoreAsync();
-        var customer = await _workContext.GetCurrentCustomerAsync();
+        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
+        var url = settings.PostLogoutRedirectUrl?.Trim();
 
-        if (customer is null || !await _customerService.IsRegisteredAsync(customer))
-            return new RedirectResult("/");
+        return !string.IsNullOrEmpty(url) && _webHelper.CheckIsLocalUrl(url) ? url : "/";
+    }
 
-        var nameId = await _genericAttributeService.GetAttributeAsync<string>(customer, SsoCustomerAttributes.SamlNameId);
-        var sessionIndex = await _genericAttributeService.GetAttributeAsync<string>(customer, SsoCustomerAttributes.SamlSessionIndex);
+    /// <inheritdoc />
+    public async Task<IActionResult> InitiateAsync(Customer customer, string nameId, string? sessionIndex)
+    {
+        var config = await _configFactory.CreateForCurrentStoreAsync(SamlConfigPurpose.Logout);
 
-        if (string.IsNullOrEmpty(nameId))
-        {
-            // No SAML state on the customer — just sign out locally and bail.
-            await _authenticationService.SignOutAsync();
-            return new RedirectResult("/");
-        }
-
-        var config = await _configFactory.CreateForCurrentStoreAsync();
-
+        // No SLO endpoint at the IdP: the local sign-out nop already did is all there is.
         if (config.SingleLogoutDestination is null)
-        {
-            // IdP SLO URL not configured. Sign out locally only; the IdP session lingers.
-            await _authenticationService.SignOutAsync();
-            return new RedirectResult("/");
-        }
+            return new RedirectResult(await GetPostLogoutUrlAsync());
 
         var logoutRequest = new Saml2LogoutRequest(config)
         {
@@ -93,15 +148,9 @@ public class SamlLogoutHandler : ISamlLogoutHandler
         var requestId = logoutRequest.Id?.Value ?? Guid.NewGuid().ToString();
         IssueLogoutCorrelationCookie(requestId);
 
-        // Sign out locally before redirecting so the local session ends even if the IdP
-        // round-trip is interrupted (browser close, network failure, etc.).
-        await ClearSamlAttributesAsync(customer);
-        await _authenticationService.SignOutAsync();
-
         await _eventService.LogAsync(
             eventType: SsoAuthEventTypes.Slo,
             protocol: SsoProtocolNames.Saml2,
-            storeId: store.Id,
             customerId: customer.Id,
             customerEmail: customer.Email ?? string.Empty,
             idpSubject: nameId,
@@ -115,48 +164,29 @@ public class SamlLogoutHandler : ISamlLogoutHandler
     /// <inheritdoc />
     public async Task<IActionResult> HandleLogoutRequestAsync(HttpRequest request)
     {
-        var store = await _storeContext.GetCurrentStoreAsync();
-        var config = await _configFactory.CreateForCurrentStoreAsync();
-
+        var config = await _configFactory.CreateForCurrentStoreAsync(SamlConfigPurpose.Logout);
         var logoutRequest = new Saml2LogoutRequest(config);
 
         try
         {
-            // ITfoxtec auto-detects redirect vs POST binding from the request shape.
-            new Saml2PostBinding().Unbind(request.ToGenericHttpRequest(), logoutRequest);
+            UnbindEither(request, logoutRequest);
         }
-        catch
+        catch (Exception ex)
         {
-            // Fall back to redirect binding (IdP sometimes uses HTTP-Redirect for logout).
-            try
-            {
-                new Saml2RedirectBinding().Unbind(request.ToGenericHttpRequest(), logoutRequest);
-            }
-            catch (Exception ex)
-            {
-                await _eventService.LogAsync(
-                    eventType: SsoAuthEventTypes.Failed,
-                    protocol: SsoProtocolNames.Saml2,
-                    storeId: store.Id,
-                    customerId: null,
-                    customerEmail: string.Empty,
-                    idpSubject: string.Empty,
-                    notes: SsoFailureReasons.Format(SsoFailureReasons.SloRequestFailed,
-                        $"IdP-initiated SLO request validation failed: {ex.Message}"));
-                return new RedirectResult("/");
-            }
+            return await FailAsync(SsoFailureReasons.SloRequestFailed,
+                $"IdP-initiated SLO request validation failed: {ex.Message}");
         }
 
         // Sign out locally — the IdP has already cleared its end.
         var customer = await _workContext.GetCurrentCustomerAsync();
         if (customer is not null)
-            await ClearSamlAttributesAsync(customer);
+            await ClearSsoAttributesAsync(customer);
+
         await _authenticationService.SignOutAsync();
 
         await _eventService.LogAsync(
             eventType: SsoAuthEventTypes.Slo,
             protocol: SsoProtocolNames.Saml2,
-            storeId: store.Id,
             customerId: customer?.Id,
             customerEmail: customer?.Email ?? string.Empty,
             idpSubject: logoutRequest.NameId?.Value ?? string.Empty,
@@ -177,105 +207,32 @@ public class SamlLogoutHandler : ISamlLogoutHandler
     /// <inheritdoc />
     public async Task<IActionResult> HandleLogoutResponseAsync(HttpRequest request)
     {
-        var store = await _storeContext.GetCurrentStoreAsync();
-        var config = await _configFactory.CreateForCurrentStoreAsync();
-
+        var config = await _configFactory.CreateForCurrentStoreAsync(SamlConfigPurpose.Logout);
         var logoutResponse = new Saml2LogoutResponse(config);
+
+        var expectedRequestId = ReadLogoutCorrelationCookie();
+        ClearLogoutCorrelationCookie();
 
         try
         {
-            new Saml2RedirectBinding().Unbind(request.ToGenericHttpRequest(), logoutResponse);
+            UnbindEither(request, logoutResponse);
         }
         catch (Exception ex)
         {
-            await _eventService.LogAsync(
-                eventType: SsoAuthEventTypes.Failed,
-                protocol: SsoProtocolNames.Saml2,
-                storeId: store.Id,
-                customerId: null,
-                customerEmail: string.Empty,
-                idpSubject: string.Empty,
-                notes: SsoFailureReasons.Format(SsoFailureReasons.SloResponseFailed,
-                    $"SP-initiated SLO response validation failed: {ex.Message}"));
-            ClearLogoutCorrelationCookie();
-            return new RedirectResult("/");
+            return await FailAsync(SsoFailureReasons.SloResponseFailed,
+                $"SP-initiated SLO response validation failed: {ex.Message}");
         }
 
-        // Validate InResponseTo if the cookie is present.
-        var expectedRequestId = ReadLogoutCorrelationCookie();
         var actualInResponseTo = logoutResponse.InResponseToAsString;
         if (!string.IsNullOrEmpty(expectedRequestId)
             && !string.Equals(actualInResponseTo, expectedRequestId, StringComparison.Ordinal))
         {
-            await _eventService.LogAsync(
-                eventType: SsoAuthEventTypes.Failed,
-                protocol: SsoProtocolNames.Saml2,
-                storeId: store.Id,
-                customerId: null,
-                customerEmail: string.Empty,
-                idpSubject: string.Empty,
-                notes: SsoFailureReasons.Format(SsoFailureReasons.SloResponseFailed,
-                    $"SLO InResponseTo mismatch (expected {expectedRequestId}, got {actualInResponseTo ?? "<null>"})."));
-            ClearLogoutCorrelationCookie();
-            return new RedirectResult("/");
+            return await FailAsync(SsoFailureReasons.SloResponseFailed,
+                $"SLO InResponseTo mismatch (expected {expectedRequestId}, got {actualInResponseTo ?? "<null>"}).");
         }
 
-        ClearLogoutCorrelationCookie();
-
-        // Local sign-out already happened in InitiateAsync. This handler is just the
-        // confirmation hop — log a follow-up note and land the user on the home page.
-        return new RedirectResult("/");
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private async Task ClearSamlAttributesAsync(Nop.Core.Domain.Customers.Customer customer)
-    {
-        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SamlNameId, null);
-        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SamlSessionIndex, null);
-        await _genericAttributeService.SaveAttributeAsync<string?>(customer, SsoCustomerAttributes.SignInProtocol, null);
-    }
-
-    private void IssueLogoutCorrelationCookie(string requestId)
-    {
-        var response = _httpContextAccessor.HttpContext?.Response;
-        if (response is null) return;
-
-        response.Cookies.Append(
-            SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName,
-            requestId,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = response.HttpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                Expires = DateTimeOffset.UtcNow.Add(SSOAuthenticationDefaults.SamlCorrelationCookieLifetime),
-                IsEssential = true
-            });
-    }
-
-    private string? ReadLogoutCorrelationCookie()
-    {
-        var request = _httpContextAccessor.HttpContext?.Request;
-        return request?.Cookies.TryGetValue(SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName, out var v) == true
-            ? v
-            : null;
-    }
-
-    private void ClearLogoutCorrelationCookie()
-    {
-        var response = _httpContextAccessor.HttpContext?.Response;
-        response?.Cookies.Delete(
-            SSOAuthenticationDefaults.SamlLogoutCorrelationCookieName,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = response.HttpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                IsEssential = true
-            });
+        // The local sign-out happened before the redirect to the IdP; this is the confirmation hop.
+        return new RedirectResult(await GetPostLogoutUrlAsync());
     }
 
     #endregion

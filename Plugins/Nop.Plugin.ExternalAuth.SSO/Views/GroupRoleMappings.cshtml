@@ -14,7 +14,7 @@
         <a asp-action="GroupRoleMappingCreate" class="btn btn-primary">
             <i class="fas fa-plus"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.AddNewButton")
         </a>
-        <a asp-action="SsoAccounts" class="btn btn-secondary ml-2">
+        <a asp-controller="@SsoAdminControllers.Accounts" asp-action="SsoAccounts" class="btn btn-secondary ml-2">
             <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.GroupRoleMapping.BackButton")
         </a>
     </div>
@@ -65,7 +65,7 @@
                     @await Html.PartialAsync("Table", new DataTablesModel
                     {
                         Name = "group-role-mappings-grid",
-                        UrlRead = new DataUrl("GroupRoleMappingsList", "ExternalAuthSSO", null),
+                        UrlRead = new DataUrl("GroupRoleMappingsList", SsoAdminControllers.GroupRoleMappings, null),
                         SearchButtonId = "search-group-role-mappings",
                         Length = Model.PageSize,
                         LengthMenu = Model.AvailablePageSizes,
@@ -110,7 +110,7 @@
                                 Title = T("Admin.Common.Edit").Text,
                                 Width = "100",
                                 ClassName = NopColumnClassDefaults.Button,
-                                Render = new RenderButtonEdit(new DataUrl("GroupRoleMappingEdit", "ExternalAuthSSO", null))
+                                Render = new RenderButtonEdit(new DataUrl("GroupRoleMappingEdit", SsoAdminControllers.GroupRoleMappings, null))
                             }
                         }
                     })

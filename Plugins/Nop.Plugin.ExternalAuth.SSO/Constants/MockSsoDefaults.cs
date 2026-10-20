@@ -8,7 +8,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Constants;
 /// <remarks>
 /// Paired with <c>MockSsoController</c> (also DEBUG-only). The mock flow exists purely
 /// to exercise the provisioning pipeline (<c>ISsoUserProvisioningService.HandleAsync</c>)
-/// without a working Azure AD tenant or SP/IdP certificates. See SSOPlan.v2.md row 24.
+/// without a working Azure AD tenant or SP/IdP certificates. See References/SSO_Plugin_Reference.md §9.
 /// </remarks>
 public static class MockSsoDefaults
 {

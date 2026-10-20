@@ -68,4 +68,34 @@ public static class SSOAuthenticationDefaults
 
     /// <summary>Name of the SAML SLO correlation cookie for SP-initiated InResponseTo validation.</summary>
     public const string SamlLogoutCorrelationCookieName = ".AspNetCore.ExternalAuthSSO.SamlLogoutCorrelation";
+
+    /// <summary>
+    /// Customer attribute holding the admin's SSO store scope on the plugin's admin pages — separate
+    /// from nop's own settings scope, which every other settings page shares.
+    /// </summary>
+    public const string StoreScopeAttribute = "SSOStoreScopeConfigurationAttribute";
+
+    /// <summary>
+    /// <c>AuthenticationProperties.Items</c> key that carries the <c>id_token_hint</c> from the logout
+    /// filter to the OIDC handler's sign-out redirect.
+    /// </summary>
+    public const string IdTokenHintItem = "ExternalAuthSSO.IdTokenHint";
+
+    /// <summary>Name of the scheduled task that deletes old audit rows.</summary>
+    public const string AuditRetentionTaskName = "SSO audit log retention";
+
+    /// <summary>Type of the scheduled task that deletes old audit rows.</summary>
+    public const string AuditRetentionTaskType = "Nop.Plugin.ExternalAuth.SSO.Services.SsoAuditRetentionTask";
+
+    /// <summary>
+    /// Entra OIDC group-overage marker: a JSON object whose <c>groups</c> entry points at the
+    /// Microsoft Graph source of the groups that did not fit in the token.
+    /// </summary>
+    public const string OidcGroupsOverageClaimType = "_claim_names";
+
+    /// <summary>Entra OIDC implicit-flow group-overage marker (<c>true</c> when groups were left out).</summary>
+    public const string OidcHasGroupsClaimType = "hasgroups";
+
+    /// <summary>Entra SAML group-overage marker: a Graph link sent instead of the group list.</summary>
+    public const string SamlGroupsOverageClaimType = "http://schemas.microsoft.com/claims/groups.link";
 }

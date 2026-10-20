@@ -20,8 +20,8 @@ public class SsoStoreSummaryModelFactory : ISsoStoreSummaryModelFactory
 
     #region Fields
 
-    private readonly IDateTimeHelper _dateTimeHelper;
-    private readonly ISsoStoreSummaryService _summaryService;
+    protected readonly IDateTimeHelper _dateTimeHelper;
+    protected readonly ISsoStoreSummaryService _summaryService;
 
     #endregion
 

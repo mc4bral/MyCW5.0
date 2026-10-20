@@ -30,7 +30,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Controllers;
 /// in <c>SamlResponseProcessor</c> or the OIDC handler. Instead the mock builds a
 /// <see cref="ClaimsPrincipal"/> from form fields and hands it directly to
 /// <c>ISsoUserProvisioningService.HandleAsync</c> — the same protocol-agnostic chokepoint
-/// the real callbacks use. See SSOPlan.v2.md row 24.
+/// the real callbacks use. See References/SSO_Plugin_Reference.md §9.
 /// </para>
 /// </remarks>
 [Route("mocksso")]
@@ -40,10 +40,10 @@ public class MockSsoController : BasePluginController
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly ISsoEventService _eventService;
-    private readonly ISsoUserProvisioningService _provisioningService;
-    private readonly IStoreContext _storeContext;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly ISsoUserProvisioningService _provisioningService;
+    protected readonly IStoreContext _storeContext;
 
     #endregion
 
@@ -129,14 +129,9 @@ public class MockSsoController : BasePluginController
         // legacy 4.1 mock and exercises the audit + redirect path.
         if (string.Equals(model.Scenario, SsoMockScenarios.Failure, StringComparison.OrdinalIgnoreCase))
         {
-            await _eventService.LogAsync(
-                eventType: SsoAuthEventTypes.Failed,
-                protocol: protocolName,
-                storeId: store.Id,
-                customerId: null,
-                customerEmail: model.Email ?? string.Empty,
-                idpSubject: model.Subject ?? string.Empty,
-                notes: "[MOCK] Failure scenario — mock IdP rejected the user before provisioning.");
+            await _eventService.LogFailureAsync(protocolName, SsoFailureReasons.MockFailure,
+                "[MOCK] Failure scenario — mock IdP rejected the user before provisioning.",
+                customerEmail: model.Email, idpSubject: model.Subject);
 
             return RedirectToRoute(NopRouteNames.General.LOGIN, new { returnUrl = model.ReturnUrl });
         }

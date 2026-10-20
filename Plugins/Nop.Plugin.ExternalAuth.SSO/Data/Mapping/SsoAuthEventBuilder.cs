@@ -1,6 +1,4 @@
 using FluentMigrator.Builders.Create.Table;
-using Nop.Core.Domain.Stores;
-using Nop.Data.Extensions;
 using Nop.Data.Mapping.Builders;
 using Nop.Plugin.ExternalAuth.SSO.Domain;
 
@@ -8,7 +6,8 @@ namespace Nop.Plugin.ExternalAuth.SSO.Data.Mapping;
 
 /// <summary>
 /// FluentMigrator builder for the <see cref="SsoAuthEvent"/> table (<c>SSO_AuthEvent</c>).
-/// Column lengths follow SSOPlan.v2.md §3.2.
+/// <c>StoreId</c> has no foreign key: system-wide rows use store 0, and the audit log must outlive a
+/// deleted store (see <c>DropAuditStoreForeignKeyMigration</c>).
 /// </summary>
 public class SsoAuthEventBuilder : NopEntityBuilder<SsoAuthEvent>
 {
@@ -21,7 +20,7 @@ public class SsoAuthEventBuilder : NopEntityBuilder<SsoAuthEvent>
     public override void MapEntity(CreateTableExpressionBuilder table)
     {
         table.WithColumn(nameof(SsoAuthEvent.Id)).AsInt32().PrimaryKey().Identity()
-            .WithColumn(nameof(SsoAuthEvent.StoreId)).AsInt32().ForeignKey<Store>().NotNullable()
+            .WithColumn(nameof(SsoAuthEvent.StoreId)).AsInt32().NotNullable()
             .WithColumn(nameof(SsoAuthEvent.CustomerId)).AsInt32().Nullable()
             .WithColumn(nameof(SsoAuthEvent.CustomerEmail)).AsString(200).NotNullable()
             .WithColumn(nameof(SsoAuthEvent.EventType)).AsString(50).NotNullable()

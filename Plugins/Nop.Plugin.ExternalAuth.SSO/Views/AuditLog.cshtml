@@ -18,7 +18,7 @@
                 @T("Plugins.ExternalAuth.SSO.AuditLog.ClearButton")
             </button>
         </form>
-        <a asp-action="Configure" class="btn btn-secondary ml-2">
+        <a asp-controller="@SsoAdminControllers.Configuration" asp-action="Configure" class="btn btn-secondary ml-2">
             <i class="fas fa-arrow-left"></i> @T("Plugins.ExternalAuth.SSO.AuditLog.BackToConfigure")
         </a>
     </div>
@@ -98,7 +98,7 @@
                     @await Html.PartialAsync("Table", new DataTablesModel
                     {
                         Name = "ssoauthevents-grid",
-                        UrlRead = new DataUrl("AuditLogList", "ExternalAuthSSO", null),
+                        UrlRead = new DataUrl("AuditLogList", SsoAdminControllers.AuditLog, null),
                         SearchButtonId = "search-ssoauthevents",
                         Length = Model.PageSize,
                         LengthMenu = Model.AvailablePageSizes,

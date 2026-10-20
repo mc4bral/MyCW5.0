@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Domain;
 using Nop.Plugin.ExternalAuth.SSO.Models;
 using Nop.Plugin.ExternalAuth.SSO.Services;
@@ -14,22 +15,12 @@ namespace Nop.Plugin.ExternalAuth.SSO.Factories;
 /// </summary>
 public class SsoGroupRoleMappingModelFactory : ISsoGroupRoleMappingModelFactory
 {
-    /// <summary>
-    /// Role system names excluded from the CustomerRole dropdown on the edit form. Matches
-    /// the runtime privileged-role guard in the service so the UI doesn't even surface
-    /// these as choices.
-    /// </summary>
-    private static readonly HashSet<string> PrivilegedRoleSystemNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Administrators"
-    };
-
     #region Fields
 
-    private readonly ICustomerService _customerService;
-    private readonly ILocalizationService _localizationService;
-    private readonly ISsoGroupRoleMappingService _mappingService;
-    private readonly IStoreService _storeService;
+    protected readonly ICustomerService _customerService;
+    protected readonly ILocalizationService _localizationService;
+    protected readonly ISsoGroupRoleMappingService _mappingService;
+    protected readonly IStoreService _storeService;
 
     #endregion
 
@@ -142,7 +133,7 @@ public class SsoGroupRoleMappingModelFactory : ISsoGroupRoleMappingModelFactory
     {
         var allRoles = await _customerService.GetAllCustomerRolesAsync(showHidden: true);
         return allRoles
-            .Where(r => !PrivilegedRoleSystemNames.Contains(r.SystemName))
+            .Where(r => !SsoRoles.IsPrivileged(r.SystemName))
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .Select(r => new SelectListItem { Value = r.Id.ToString(), Text = r.Name })
             .ToList();

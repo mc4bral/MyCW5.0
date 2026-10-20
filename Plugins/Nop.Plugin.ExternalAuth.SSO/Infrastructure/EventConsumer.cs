@@ -16,8 +16,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Infrastructure;
 /// — no entry in <see cref="NopStartup.ConfigureServices"/> required.
 ///
 /// Patterned after <c>Nop.Plugin.Integration.Odoo.Infrastructure.EventConsumer</c>.
-/// M2.c menu has one child node (Configure); audit log (M4) and group→role mappings (M3)
-/// add their own child nodes in later milestones.
+/// Child nodes: SSO Accounts, Configure, Group → Role Mappings and Audit Log.
 /// </remarks>
 public class EventConsumer : BaseAdminMenuCreatedEventConsumer
 {
@@ -29,7 +28,7 @@ public class EventConsumer : BaseAdminMenuCreatedEventConsumer
 
     #region Fields
 
-    private readonly ILocalizationService _localizationService;
+    protected readonly ILocalizationService _localizationService;
 
     #endregion
 
@@ -61,7 +60,7 @@ public class EventConsumer : BaseAdminMenuCreatedEventConsumer
         {
             SystemName = "ExternalAuth.SSO.SsoAccounts",
             Title = ssoAccountsTitle,
-            Url = "/Admin/ExternalAuthSSO/SsoAccounts",
+            Url = "/Admin/SsoAccounts/SsoAccounts",
             Visible = true,
             IconClass = "fas fa-list"
         };
@@ -70,7 +69,7 @@ public class EventConsumer : BaseAdminMenuCreatedEventConsumer
         {
             SystemName = "ExternalAuth.SSO.Configure",
             Title = configureTitle,
-            Url = "/Admin/ExternalAuthSSO/ConfigureStore/-10",
+            Url = "/Admin/SsoConfiguration/ConfigureStore/-1",
             Visible = true,
             IconClass = "far fa-circle-dot"
         };
@@ -79,7 +78,7 @@ public class EventConsumer : BaseAdminMenuCreatedEventConsumer
         {
             SystemName = "ExternalAuth.SSO.GroupRoleMappings",
             Title = groupRoleMappingsTitle,
-            Url = "/Admin/ExternalAuthSSO/GroupRoleMappings",
+            Url = "/Admin/SsoGroupRoleMappings/GroupRoleMappings",
             Visible = true,
             IconClass = "fas fa-users-cog"
         };
@@ -88,7 +87,7 @@ public class EventConsumer : BaseAdminMenuCreatedEventConsumer
         {
             SystemName = "ExternalAuth.SSO.AuditLog",
             Title = auditLogTitle,
-            Url = "/Admin/ExternalAuthSSO/AuditLog",
+            Url = "/Admin/SsoAuditLog/AuditLog",
             Visible = true,
             IconClass = "far fa-clipboard"
         };

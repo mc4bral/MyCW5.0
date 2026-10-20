@@ -2,20 +2,20 @@
 
 @model StoreScopeConfigurationModel
 
-@inject Nop.Core.IWebHelper webHelper
+@inject Nop.Services.Helpers.IWebHelper webHelper
 
 @{
     var returnUrl = webHelper.GetRawUrl(Context.Request);
     var stores = await Model.Stores.SelectAwait(async store => new SelectListItem
     {
         Text = store.Name,
-        Value = Url.Action("ChangeStoreScopeSSOConfiguration", "ExternalAuthSSO", new { storeid = store.Id, returnUrl }, webHelper.GetCurrentRequestProtocol()),
+        Value = Url.Action("ChangeStoreScopeSSOConfiguration", SsoAdminControllers.Configuration, new { storeid = store.Id, returnUrl }, webHelper.GetCurrentRequestProtocol()),
         Selected = store.Id.Equals(Model.StoreId)
     }).ToListAsync();
     stores.Insert(0, new SelectListItem
     {
         Text = T("Admin.Configuration.Settings.StoreScope.AllStores").Text,
-        Value = Url.Action("ChangeStoreScopeSSOConfiguration", "ExternalAuthSSO", new { storeid = 0, returnUrl }, webHelper.GetCurrentRequestProtocol()),
+        Value = Url.Action("ChangeStoreScopeSSOConfiguration", SsoAdminControllers.Configuration, new { storeid = 0, returnUrl }, webHelper.GetCurrentRequestProtocol()),
         Selected = 0.Equals(Model.StoreId)
     });
 }

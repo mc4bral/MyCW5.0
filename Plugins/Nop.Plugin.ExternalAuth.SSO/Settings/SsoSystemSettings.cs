@@ -1,4 +1,5 @@
 using Nop.Core.Configuration;
+using Nop.Core.Domain.Customers;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Settings;
 
@@ -8,7 +9,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Settings;
 /// <remarks>
 /// Stored at <c>storeId = 0</c> (never overridden per-store). Covers the local-login bypass
 /// mechanism that lets ops recover access when SSO is enabled but the IdP is unavailable.
-/// See SSOPlan.v2.md §3.7.
+/// See References/SSO_Plugin_Reference.md §4.2.
 /// </remarks>
 public class SsoSystemSettings : ISettings
 {
@@ -24,7 +25,7 @@ public class SsoSystemSettings : ISettings
     /// through the bypass URL. A customer not in any of these roles is signed out and
     /// <c>BypassDenied</c>-audited after a successful credential submission.
     /// </summary>
-    public string LocalLoginAllowedRoles { get; set; } = "Administrators";
+    public string LocalLoginAllowedRoles { get; set; } = NopCustomerDefaults.AdministratorsRoleName;
 
     /// <summary>
     /// Maximum number of SSO login challenges allowed per client IP per sliding hour.
@@ -42,4 +43,10 @@ public class SsoSystemSettings : ISettings
     /// <c>LogCleared</c> breadcrumb row regardless of this setting.
     /// </summary>
     public bool EnableAuditLogging { get; set; } = true;
+
+    /// <summary>
+    /// Audit rows older than this many days are deleted by the daily "SSO audit log retention"
+    /// scheduled task. 0 = keep forever.
+    /// </summary>
+    public int AuditRetentionDays { get; set; } = 365;
 }

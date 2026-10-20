@@ -1,7 +1,7 @@
 namespace Nop.Plugin.ExternalAuth.SSO.Models;
 
 /// <summary>
-/// Result of <see cref="Services.ISsoTestConnectionService.TestAsync"/> (M12).
+/// Result of <see cref="Services.ISsoTestConnectionService.TestAsync"/>.
 /// Serialised to JSON for the inline status next to the Test button on the SSO Accounts grid.
 /// </summary>
 public record TestConnectionResult
@@ -19,7 +19,7 @@ public record TestConnectionResult
     public DateTime CheckedAtUtc { get; set; }
 
     /// <summary>
-    /// M14 — outcome of the IdP-metadata handshake. Always populated; <see cref="HandshakeResult.SkippedReason"/>
+    /// outcome of the IdP-metadata handshake. Always populated; <see cref="HandshakeResult.SkippedReason"/>
     /// is set when no metadata URL is configured (OIDC or SAML without <c>IdpMetadataUrl</c>).
     /// </summary>
     public HandshakeResult Handshake { get; set; } = new HandshakeResult();

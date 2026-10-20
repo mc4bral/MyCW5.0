@@ -14,6 +14,9 @@ public static class SsoAuthEventTypes
     /// <summary>An existing nopCommerce customer was linked to the IdP subject.</summary>
     public const string Linked = "Linked";
 
+    /// <summary>A customer already linked to the IdP subject signed in.</summary>
+    public const string SignedIn = "SignedIn";
+
     /// <summary>Single Log-Out completed.</summary>
     public const string Slo = "Slo";
 

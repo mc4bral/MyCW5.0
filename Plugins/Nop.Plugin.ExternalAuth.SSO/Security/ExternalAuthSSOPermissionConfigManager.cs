@@ -9,7 +9,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Security;
 /// <remarks>
 /// Auto-discovered by <c>PermissionService.InsertPermissionsAsync</c> via
 /// <c>ITypeFinder.FindClassesOfType&lt;IPermissionConfigManager&gt;</c>; no DI registration required.
-/// Default-granted only to the <c>Administrators</c> role per SSOPlan.v2.md §3.10 (P1-20).
+/// Default-granted only to the <c>Administrators</c> role. See References/SSO_Plugin_Reference.md §7.3.
 /// Plugin install/uninstall calls <c>InsertPermissionsAsync</c> / removes these system names
 /// from the <c>PermissionRecord</c> table.
 /// </remarks>
@@ -23,12 +23,6 @@ public partial class ExternalAuthSSOPermissionConfigManager : IPermissionConfigM
     /// <inheritdoc />
     public IList<PermissionConfig> AllConfigs => new List<PermissionConfig>
     {
-        new (
-            name: "Plugins. ExternalAuth.SSO. Access plugin features",
-            systemName: ExternalAuthSSOPermissions.ACCESS_SSO_PLUGIN,
-            category: Category,
-            NopCustomerDefaults.AdministratorsRoleName),
-
         new (
             name: "Plugins. ExternalAuth.SSO. Configure",
             systemName: ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS,

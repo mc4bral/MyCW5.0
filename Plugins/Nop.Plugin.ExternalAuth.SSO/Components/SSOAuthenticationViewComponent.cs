@@ -19,8 +19,8 @@ public class SSOAuthenticationViewComponent : NopViewComponent
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly IStoreContext _storeContext;
+    protected readonly ISettingService _settingService;
+    protected readonly IStoreContext _storeContext;
 
     #endregion
 
@@ -51,7 +51,7 @@ public class SSOAuthenticationViewComponent : NopViewComponent
         if (!settings.IsEnabled || settings.Protocol == SsoProtocol.Off)
             return Content(string.Empty);
 
-        // M13 — admin-configurable IdP display name drives the button label.
+        // admin-configurable IdP display name drives the button label.
         // Falls back to "Microsoft" so existing installations without the new field still
         // render a sensible button.
         ViewData["IdpDisplayName"] = string.IsNullOrWhiteSpace(settings.IdpDisplayName)

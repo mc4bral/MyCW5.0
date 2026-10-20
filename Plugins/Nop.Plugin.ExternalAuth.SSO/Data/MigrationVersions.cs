@@ -16,4 +16,10 @@ public static class MigrationVersions
     /// (<c>SSO_AuthEvent</c> + <c>SSO_GroupRoleMapping</c>).
     /// </summary>
     public const string InitialSchema = "2026/06/01 00:00:00";
+
+    /// <summary>
+    /// Drop the <c>SSO_AuthEvent.StoreId</c> → <c>Store.Id</c> foreign key: system-wide audit rows
+    /// use store 0, which is not a store, and an audit log must outlive a deleted store.
+    /// </summary>
+    public const string DropAuditStoreForeignKey = "2026/10/19 12:00:00";
 }

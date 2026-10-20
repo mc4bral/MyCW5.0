@@ -1,41 +1,45 @@
 namespace Nop.Plugin.ExternalAuth.SSO.Services;
 
 /// <summary>
-/// Protects sensitive plugin settings at rest using nopCommerce's <c>IEncryptionService</c>
-/// layered with ASP.NET Core Data Protection (<c>IDataProtector</c>).
+/// Protects the plugin's secret settings at rest with ASP.NET Core Data Protection.
 /// </summary>
 /// <remarks>
-/// Plain reads/writes of <see cref="Settings.SsoConfigurationSettings"/> sensitive fields
-/// (<c>ClientSecret</c>, <c>IdpCertificateBase64</c>, <c>SpPfxBase64</c>, <c>SpPfxPassword</c>)
-/// and <see cref="Settings.SsoSystemSettings.SsoBypassToken"/> must round-trip through this
-/// service. See SSOPlan.v2.md §3.3.
-///
-/// Layering: outer = <c>IEncryptionService</c> (nopCommerce-wide static key from
-/// <c>appsettings.json</c>); inner = <c>IDataProtector</c> (ASP.NET Core key-ring,
-/// auto-rotating). Both must succeed to round-trip; either failure surfaces as
-/// <see cref="CryptographicException"/> (fixes legacy P1-16: no silent fallback to plaintext).
+/// <para>
+/// Applies to <see cref="Settings.SsoConfigurationSettings"/> <c>ClientSecret</c>,
+/// <c>IdpCertificateBase64</c>, <c>SpPfxBase64</c>, <c>SpPfxPassword</c> and
+/// <see cref="Settings.SsoSystemSettings.SsoBypassToken"/>; reads and writes of those fields go
+/// through this service.
+/// </para>
+/// <para>
+/// One layer: the Data Protection key ring, which nop keeps outside the database
+/// (<c>App_Data/DataProtectionKeys</c>, or Redis / Azure when configured). Values written before
+/// 2026-10-19 were also wrapped in nop's <c>IEncryptionService</c>, whose key lives in the same
+/// database as the values; they are still read, and the plugin update rewrites them. A value that
+/// cannot be decrypted is an error, never a silent fallback to the raw text.
+/// </para>
 /// </remarks>
 public interface ISsoSecretsService
 {
     /// <summary>
-    /// Encrypts <paramref name="plaintext"/> for at-rest storage.
-    /// Returns <see cref="string.Empty"/> when <paramref name="plaintext"/> is null or empty
-    /// (so empty settings round-trip as empty rather than ciphertext-of-empty).
+    /// Encrypt <paramref name="plaintext"/> for storage. Empty in, empty out (an empty setting
+    /// stays empty rather than becoming ciphertext-of-empty).
     /// </summary>
     string Protect(string? plaintext);
 
     /// <summary>
-    /// Decrypts <paramref name="ciphertext"/> produced by <see cref="Protect"/>.
-    /// Returns <see cref="string.Empty"/> when <paramref name="ciphertext"/> is null or empty.
-    /// Throws when decryption fails — callers must surface this to the admin rather than
-    /// fall back to the raw value.
+    /// Decrypt a stored value, current or legacy format. Empty in, empty out.
     /// </summary>
+    /// <exception cref="System.Security.Cryptography.CryptographicException">The value cannot be decrypted with this server's keys</exception>
     string Unprotect(string? ciphertext);
 
     /// <summary>
-    /// Non-throwing variant for cold-path code where a decrypt failure should be surfaced
-    /// as a structured error rather than an exception. Returns <c>false</c> and leaves
-    /// <paramref name="plaintext"/> empty on failure.
+    /// Non-throwing <see cref="Unprotect"/>: false, with an empty <paramref name="plaintext"/>, when
+    /// the value cannot be decrypted.
     /// </summary>
     bool TryUnprotect(string? ciphertext, out string plaintext);
+
+    /// <summary>
+    /// Whether a stored value is empty or already in the current single-layer format.
+    /// </summary>
+    bool IsCurrentFormat(string? ciphertext);
 }

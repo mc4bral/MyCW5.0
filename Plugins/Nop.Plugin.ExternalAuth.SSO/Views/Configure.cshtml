@@ -3,29 +3,38 @@
 
 @{
     Layout = "_AdminLayout";
-        NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.Configure");
+    NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.Configure");
+
+    // Page behaviour (role picker, import, onboarding report, protocol visibility, test
+    // connection) lives in Content/Admin/sso-admin.js; it reads the .sso-configure-config div below.
+    NopHtml.AddScriptParts(ResourceLocation.Footer, "~/Plugins/ExternalAuth.SSO/Content/Admin/sso-admin.js");
+
+    var ssoConfigureResources = new Dictionary<string, string>
+    {
+        ["NoRoles"] = T("Admin.Customers.Customers.Fields.CustomerRoles.NoRoles").Text,
+        ["ImportNoInput"] = T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.NoInput").Text,
+        ["Importing"] = T("Plugins.ExternalAuth.SSO.IdpMetadata.Importing").Text,
+        ["Imported"] = T("Plugins.ExternalAuth.SSO.IdpMetadata.Imported").Text,
+        ["ImportError"] = T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.Generic").Text,
+        ["ReportLoading"] = T("Plugins.ExternalAuth.SSO.OnboardingReport.Loading").Text,
+        ["ReportError"] = T("Plugins.ExternalAuth.SSO.OnboardingReport.Error").Text,
+        ["TestRunning"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Running").Text,
+        ["TestFailed"] = "Test connection request failed.",
+        ["HandshakeSkipped"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeSkipped").Text,
+        ["HandshakeTitle"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeTitle").Text,
+        ["CheckEntityId"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.EntityId").Text,
+        ["CheckSsoUrl"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SsoUrl").Text,
+        ["CheckSloUrl"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SloUrl").Text,
+        ["CheckCertificate"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.Certificate").Text,
+        ["MetadataThumbprints"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.MetadataThumbprints").Text
+    };
 }
 
 @*
-    M13 — Configure layout matches the legacy SSOPlan.md screenshots so admins familiar
-    with the previous plugin find the same field labels, hints and card ordering.
-
-    Card order (legacy parity):
-      1. General
-      2. Identity Provider (Azure AD / Entra)
-      3. Send these to your IdP team        (onboarding report + SP metadata URL)
-      4. Service Provider (This Application)
-      5. Claim Mapping
-      6. User Provisioning
-      7. Bindings & Redirects
-      8. Custom Attributes (JSON)
-      9. Login Bypass (System-wide)
-     10. Audit Logging (System-wide)
-     11. Test SSO Connection
-
-    OIDC fields surface a dedicated "OpenID Connect" card between General and IdP — that
-    card has no analogue in the legacy plugin (which was SAML-only) but it slots into the
-    same flow naturally and is hidden behind the asp-card collapse if Protocol != OIDC.
+    Card order: General, OpenID Connect, Identity Provider (Azure AD / Entra), Send these to your
+    IdP team, Service Provider, Claim Mapping, User Provisioning, Bindings & Redirects, then — at
+    "All stores" only — Login Bypass and Audit Logging, then Test SSO Connection. The protocol
+    dropdown hides the cards that do not apply (sso-admin.js).
 *@
 @{
     var customer = await workContext.GetCurrentCustomerAsync();
@@ -54,8 +63,6 @@
     const string hideRedirectsBlockAttributeName = "ExternalAuthSSOPage.HideCard.Redirects";
     var hideRedirectsBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideRedirectsBlockAttributeName);
 
-    const string hideCustomAttrsBlockAttributeName = "ExternalAuthSSOPage.HideCard.CustomAttrs";
-    var hideCustomAttrsBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideCustomAttrsBlockAttributeName);
 
     const string hideBypassBlockAttributeName = "ExternalAuthSSOPage.HideCard.Bypass";
     var hideBypassBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideBypassBlockAttributeName);
@@ -70,7 +77,14 @@
     var hideMockBlock = await genericAttributeService.GetAttributeAsync<bool>(customer, hideMockBlockAttributeName);
 }
 
-<form asp-controller="ExternalAuthSSO" asp-action="Configure" method="post">
+<form asp-controller="@SsoAdminControllers.Configuration" asp-action="Configure" method="post">
+    <div class="sso-configure-config" style="display: none;"
+         data-import-url="@Url.Action("ImportIdpMetadata", SsoAdminControllers.Configuration)"
+         data-onboarding-report-url="@Url.Action("OnboardingReport", SsoAdminControllers.Configuration)"
+         data-test-connection-url="@Url.Action("TestConnection", SsoAdminControllers.Accounts)"
+         data-store-id="@Model.ActiveStoreScopeConfiguration"
+         data-has-roles="@(Model.AvailableCustomerRoles.Any() ? "true" : "false")"
+         data-resources="@System.Text.Json.JsonSerializer.Serialize(ssoConfigureResources)"></div>
     @*
         Action bar — Save button rendered in the upper-right corner per AGENTS.md §9.4.
         Per-store deletion is handled by nop's standard "override-for-store" pattern
@@ -241,7 +255,7 @@
                               asp-hide="@hideIdpBlock" asp-advanced="false">
                         <div class="card-body">
 
-                            @* IdP metadata import (M7) lives here so admins can prefill the four IdP fields from federation XML. *@
+                            @* IdP metadata import lives here so admins can prefill the four IdP fields from federation XML. *@
                             <div class="card card-default border-info mb-3">
                                 <div class="card-header bg-info text-white">
                                     <i class="fas fa-file-import"></i>
@@ -395,7 +409,7 @@
                                                 <a class="btn btn-default" href="@spMetadataUrl" target="_blank">
                                                     <i class="fas fa-external-link-alt"></i> @T("Admin.Common.Open")
                                                 </a>
-                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('SpMetadataUrlField')">
+                                                <button type="button" class="btn btn-default js-sso-copy" data-copy-target="SpMetadataUrlField">
                                                     <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
                                                 </button>
                                             </div>
@@ -425,7 +439,7 @@
                                         <div class="input-group">
                                             <input type="text" class="form-control" readonly value="@oidcRedirectUri" id="OidcRedirectUriField" />
                                             <div class="input-group-append">
-                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('OidcRedirectUriField')">
+                                                <button type="button" class="btn btn-default js-sso-copy" data-copy-target="OidcRedirectUriField">
                                                     <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
                                                 </button>
                                             </div>
@@ -440,7 +454,7 @@
                                         <div class="input-group">
                                             <input type="text" class="form-control" readonly value="@oidcPostLogoutUri" id="OidcPostLogoutRedirectUriField" />
                                             <div class="input-group-append">
-                                                <button type="button" class="btn btn-default" onclick="copyReadonlyField('OidcPostLogoutRedirectUriField')">
+                                                <button type="button" class="btn btn-default js-sso-copy" data-copy-target="OidcPostLogoutRedirectUriField">
                                                     <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
                                                 </button>
                                             </div>
@@ -512,6 +526,15 @@
                                 <div class="col-md-9">
                                     <nop-editor asp-for="EncryptedAssertion" />
                                     <span asp-validation-for="EncryptedAssertion"></span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="AllowIdpInitiatedLogin" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="AllowIdpInitiatedLogin" />
+                                    <span asp-validation-for="AllowIdpInitiatedLogin"></span>
                                 </div>
                             </div>
                             <div class="form-group row">
@@ -606,6 +629,15 @@
                                     <span asp-validation-for="GroupsClaimType"></span>
                                 </div>
                             </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="RolesClaimType" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="RolesClaimType" />
+                                    <span asp-validation-for="RolesClaimType"></span>
+                                </div>
+                            </div>
                         </div>
                     </nop-card>
 
@@ -626,29 +658,11 @@
                             </div>
                             <div class="form-group row">
                                 <div class="col-md-3">
-                                    <nop-label asp-for="SelectedCustomerRoleIds" />
+                                    <nop-label asp-for="DefaultRoleIds" />
                                 </div>
                                 <div class="col-md-9">
-                                    <nop-select asp-for="SelectedCustomerRoleIds" asp-items="Model.AvailableCustomerRoles" asp-multiple="true" />
+                                    <nop-select asp-for="DefaultRoleIds" asp-items="Model.AvailableCustomerRoles" asp-multiple="true" />
                                 </div>
-                                <div class="input-group-btn">
-                                    <nop-required />
-                                </div>
-
-                                <script>
-                                    $(function() {
-                                        var customerRoleIdsInput = $('#@Html.IdFor(model => model.SelectedCustomerRoleIds)').select2({
-                                            closeOnSelect: false,
-                                            @if (!Model.AvailableCustomerRoles.Any())
-                                            {
-                                            <text>
-                                            disabled: true,
-                                            placeholder: '@T("Admin.Customers.Customers.Fields.CustomerRoles.NoRoles")',
-                                            </text>
-                                            }
-                                        });
-                                    });
-                                </script>
                             </div>
 
                             <div class="form-group row">
@@ -693,7 +707,7 @@
                                     <nop-label asp-for="LoginBinding" />
                                 </div>
                                 <div class="col-md-9">
-                                    <nop-editor asp-for="LoginBinding" />
+                                    <nop-select asp-for="LoginBinding" asp-items="Model.AvailableBindings" />
                                     <span asp-validation-for="LoginBinding"></span>
                                 </div>
                             </div>
@@ -702,7 +716,7 @@
                                     <nop-label asp-for="LogoutBinding" />
                                 </div>
                                 <div class="col-md-9">
-                                    <nop-editor asp-for="LogoutBinding" />
+                                    <nop-select asp-for="LogoutBinding" asp-items="Model.AvailableBindings" />
                                     <span asp-validation-for="LogoutBinding"></span>
                                 </div>
                             </div>
@@ -722,26 +736,6 @@
                                 <div class="col-md-9">
                                     <nop-editor asp-for="PostLogoutRedirectUrl" />
                                     <span asp-validation-for="PostLogoutRedirectUrl"></span>
-                                </div>
-                            </div>
-                        </div>
-                    </nop-card>
-
-                    @* ---------------- 8. Custom Attributes (JSON) ---------------- *@
-                    <nop-card asp-name="microsoft-customattrs" asp-icon="fas fa-code"
-                              asp-title="@T("Plugins.ExternalAuth.SSO.Cards.CustomAttributes")"
-                              asp-hide-block-attribute-name="@hideCustomAttrsBlockAttributeName"
-                              asp-hide="@hideCustomAttrsBlock" asp-advanced="true">
-                        <div class="card-body">
-                            <div class="form-group row">
-                                <div class="col-md-3">
-                                    <nop-label asp-for="CustomAttributesJson" />
-                                </div>
-                                <div class="col-md-9">
-                                    <nop-textarea asp-for="CustomAttributesJson"
-                                                  html-attributes="@(new { rows = "4", placeholder = "{ \"key\": \"value\" }" })" />
-                                    <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.CustomAttributesJson.Hint")</small>
-                                    <span asp-validation-for="CustomAttributesJson"></span>
                                 </div>
                             </div>
                         </div>
@@ -829,6 +823,15 @@
                                     <span asp-validation-for="EnableAuditLogging"></span>
                                 </div>
                             </div>
+                            <div class="form-group row">
+                                <div class="col-md-3">
+                                    <nop-label asp-for="AuditRetentionDays" />
+                                </div>
+                                <div class="col-md-9">
+                                    <nop-editor asp-for="AuditRetentionDays" />
+                                    <span asp-validation-for="AuditRetentionDays"></span>
+                                </div>
+                            </div>
                         </div>
                     </nop-card>
 
@@ -895,209 +898,3 @@
     </section>
 </form>
 
-@*
-    Inline scripts — kept here so the page is self-contained.
-    1. IdP metadata import (M7) — POST to ImportIdpMetadata, prefill IdP fields.
-    2. Onboarding report — fetch + render + copy/refresh (M9 + M13).
-    3. Test SSO Connection — call M12 TestConnection for current scope.
-*@
-<script>
-    (function () {
-        function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-        function antiforgeryFormData() {
-            var fd = new FormData();
-            var token = document.querySelector('input[name="__RequestVerificationToken"]');
-            if (token) fd.append('__RequestVerificationToken', token.value);
-            return fd;
-        }
-
-        // --- IdP metadata import (M7) ----------------------------------------
-        var importBtn = document.getElementById('btnImportIdpMetadata');
-        if (importBtn) {
-            importBtn.addEventListener('click', function () {
-                var urlInput = document.getElementById('IdpMetadataUrlImport');
-                var fileInput = document.getElementById('IdpMetadataFileImport');
-                var status = document.getElementById('IdpMetadataImportStatus');
-                var fd = antiforgeryFormData();
-                if (fileInput.files && fileInput.files.length > 0) fd.append('file', fileInput.files[0]);
-                else if (urlInput.value && urlInput.value.trim() !== '') fd.append('url', urlInput.value.trim());
-                else { status.innerHTML = '<span class="text-danger">@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.NoInput")</span>'; return; }
-
-                status.innerHTML = '<i class="fas fa-spinner fa-spin"></i> @T("Plugins.ExternalAuth.SSO.IdpMetadata.Importing")';
-                importBtn.disabled = true;
-                fetch('@Url.Action("ImportIdpMetadata", "ExternalAuthSSO")', { method: 'POST', body: fd, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        importBtn.disabled = false;
-                        if (!data || !data.success) {
-                            status.innerHTML = '<span class="text-danger">' + escapeHtml((data && data.error) || '@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.Generic")') + '</span>';
-                            return;
-                        }
-                        var r = data.result;
-                        if (r.idpEntityId) document.getElementById('IdpEntityId').value = r.idpEntityId;
-                        if (r.idpSsoUrl) document.getElementById('IdpSsoUrl').value = r.idpSsoUrl;
-                        if (r.idpSloUrl) document.getElementById('IdpSloUrl').value = r.idpSloUrl;
-                        if (r.idpCertificateBase64) { var c = document.getElementById('IdpCertificateBase64'); if (c) c.value = r.idpCertificateBase64; }
-                        status.innerHTML = '<span class="text-success"><i class="fas fa-check"></i> @T("Plugins.ExternalAuth.SSO.IdpMetadata.Imported")</span>';
-                    })
-                    .catch(function (err) {
-                        importBtn.disabled = false;
-                        status.innerHTML = '<span class="text-danger">' + escapeHtml(err.message || '@T("Plugins.ExternalAuth.SSO.IdpMetadata.Error.Generic")') + '</span>';
-                    });
-            });
-        }
-
-        // --- Onboarding report (M9 + M13) ------------------------------------
-        var refreshBtn = document.getElementById('btnRefreshOnboardingReport');
-        var copyBtn = document.getElementById('btnCopyOnboardingReport');
-        var textArea = document.getElementById('OnboardingReportText');
-
-        function loadOnboardingReport() {
-            if (!textArea) return;
-            textArea.value = '@T("Plugins.ExternalAuth.SSO.OnboardingReport.Loading")';
-            fetch('@Url.Action("OnboardingReport", "ExternalAuthSSO")', { credentials: 'same-origin' })
-                .then(function (r) { return r.text(); })
-                .then(function (txt) { textArea.value = txt; })
-                .catch(function (err) { textArea.value = err.message || '@T("Plugins.ExternalAuth.SSO.OnboardingReport.Error")'; });
-        }
-
-        if (refreshBtn) refreshBtn.addEventListener('click', loadOnboardingReport);
-        if (textArea) loadOnboardingReport();
-
-        if (copyBtn && textArea) {
-            copyBtn.addEventListener('click', function () {
-                textArea.select();
-                document.execCommand('copy');
-            });
-        }
-
-        // --- Protocol-aware card visibility ---------------------------------
-        // When OpenID Connect is selected, hide the SAML-only cards (Identity
-        // Provider, Send to IdP team, Service Provider) and the SAML-only
-        // binding rows inside the mixed "Bindings & Redirects" card. When
-        // SAML 2.0 is selected, hide the OpenID Connect card. When Off,
-        // show everything so the admin can pre-fill before flipping protocol on.
-        // Enum values mirror Nop.Plugin.ExternalAuth.SSO.Settings.SsoProtocol:
-        // Off = 0, OpenIdConnect = 1, Saml2 = 2.
-        var protocolSelect = document.getElementById('Protocol');
-        if (protocolSelect) {
-            // Whole cards hidden by protocol. microsoft-sendtoIdp stays visible for both
-            // OIDC and SAML now that it carries protocol-aware inner sections — the
-            // inner-container lists below toggle which one shows.
-            var samlCardIds = ['microsoft-idp', 'microsoft-sp'];
-            var oidcCardIds = ['microsoft-oidc'];
-
-            // Arbitrary container divs hidden by protocol (used for inner sections that
-            // live inside a card kept visible for both protocols, e.g. Send-to-IdP team).
-            var samlOnlyContainerIds = ['sendToIdp-saml-section'];
-            var oidcOnlyContainerIds = ['sendToIdp-oidc-section'];
-
-            // Individual form-group rows hidden by protocol — resolved by walking up from
-            // the input id to its enclosing .form-group.
-            var samlOnlyFieldIds = ['LoginBinding', 'LogoutBinding'];
-
-            function setVisible(el, visible) {
-                if (el) el.style.display = visible ? '' : 'none';
-            }
-
-            function rowFor(fieldId) {
-                var input = document.getElementById(fieldId);
-                return input ? input.closest('.form-group') : null;
-            }
-
-            function applyProtocolVisibility() {
-                var p = parseInt(protocolSelect.value, 10);
-                var showOidc = p !== 2; // hide OIDC content when SAML selected
-                var showSaml = p !== 1; // hide SAML content when OIDC selected
-                oidcCardIds.forEach(function (id) { setVisible(document.getElementById(id), showOidc); });
-                samlCardIds.forEach(function (id) { setVisible(document.getElementById(id), showSaml); });
-                oidcOnlyContainerIds.forEach(function (id) { setVisible(document.getElementById(id), showOidc); });
-                samlOnlyContainerIds.forEach(function (id) { setVisible(document.getElementById(id), showSaml); });
-                samlOnlyFieldIds.forEach(function (id) { setVisible(rowFor(id), showSaml); });
-            }
-
-            applyProtocolVisibility();
-            protocolSelect.addEventListener('change', applyProtocolVisibility);
-        }
-
-        // --- Test SSO Connection (M12 + M14 handshake) -----------------------
-        // Renders the existing legacy-style banner + a per-check handshake panel
-        // (EntityID / SSO URL / SLO URL / Certificate) when the handshake actually ran.
-        // SkippedReason → muted "handshake not attempted" notice so the admin knows the
-        // basic checks ran but the cryptographic match did not.
-        var testBtn = document.getElementById('btnTestSsoConnection');
-        if (testBtn) {
-            testBtn.addEventListener('click', function () {
-                var result = document.getElementById('TestSsoConnectionResult');
-                var storeId = @Model.ActiveStoreScopeConfiguration;
-                result.style.display = 'block';
-                result.className = 'alert alert-info mt-3';
-                result.innerHTML = '<i class="fas fa-spinner fa-spin"></i> @T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Running")';
-                var fd = antiforgeryFormData();
-                fd.append('storeId', storeId);
-                fetch('@Url.Action("TestConnection", "ExternalAuthSSO")', { method: 'POST', body: fd, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        result.className = 'alert mt-3 ' + (data.success ? 'alert-success' : 'alert-danger');
-                        result.innerHTML = renderTestResult(data);
-                    })
-                    .catch(function (err) {
-                        result.className = 'alert mt-3 alert-danger';
-                        result.textContent = err.message || 'Test connection request failed.';
-                    });
-            });
-        }
-
-        function renderTestResult(data) {
-            var html = '<strong>' + (data.success ? '✓' : '✗') + '</strong> ' + escapeHtml(data.message || '');
-            if (data.details) html += '<pre class="mt-2 mb-2" style="white-space:pre-wrap;">' + escapeHtml(data.details) + '</pre>';
-
-            var h = data.handshake;
-            if (!h) return html;
-
-            if (h.skippedReason) {
-                html += '<div class="mt-2"><em class="text-muted">'
-                     + '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeSkipped"): '
-                     + escapeHtml(h.skippedReason) + '</em></div>';
-                return html;
-            }
-
-            html += '<div class="mt-3"><strong>@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeTitle"):</strong>';
-            html += '<ul class="list-unstyled mb-0 mt-1">';
-            html += handshakeCheckRow(h.entityIdMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.EntityId")');
-            html += handshakeCheckRow(h.ssoUrlMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SsoUrl")');
-            html += handshakeCheckRow(h.sloUrlMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SloUrl")');
-            html += handshakeCheckRow(h.certificateMatches, '@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.Certificate")');
-            html += '</ul></div>';
-
-            if (h.signingKeyThumbprints && h.signingKeyThumbprints.length > 0) {
-                html += '<div class="mt-3"><strong>@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.MetadataThumbprints"):</strong>';
-                html += '<ul class="small mb-0 mt-1" style="font-family: monospace;">';
-                h.signingKeyThumbprints.forEach(function (t) {
-                    html += '<li>' + escapeHtml(t) + '</li>';
-                });
-                html += '</ul></div>';
-            }
-            return html;
-        }
-
-        function handshakeCheckRow(passed, label) {
-            var icon = passed
-                ? '<i class="fas fa-check-circle text-success"></i>'
-                : '<i class="fas fa-times-circle text-danger"></i>';
-            return '<li>' + icon + ' ' + label + '</li>';
-        }
-    })();
-
-    // Generic "Copy" helper for the readonly URL fields in the Send-to-IdP card
-    // (SAML SP metadata URL, OIDC Redirect URI, OIDC Post-logout Redirect URI).
-    // Called inline from onclick="copyReadonlyField('FieldId')".
-    function copyReadonlyField(fieldId) {
-        var field = document.getElementById(fieldId);
-        if (!field) return;
-        field.select();
-        document.execCommand('copy');
-    }
-
-</script>

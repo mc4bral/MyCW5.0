@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Nop.Core;
 using Nop.Core.Domain.Customers;
+using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Models;
 using Nop.Plugin.ExternalAuth.SSO.Services;
 using Nop.Plugin.ExternalAuth.SSO.Settings;
@@ -17,11 +18,13 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly ISsoSecretsService _secretsService;
-    private readonly IGenericAttributeService _genericAttributeService;
-    private readonly IWorkContext _workContext;
-    private readonly ICustomerService _customerService;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoSecretsService _secretsService;
+    protected readonly IGenericAttributeService _genericAttributeService;
+    protected readonly IWorkContext _workContext;
+    protected readonly ICustomerService _customerService;
+    protected readonly ISsoOidcOptionsCache _oidcOptionsCache;
+
     #endregion
 
     #region Ctor
@@ -31,13 +34,15 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         ISsoSecretsService secretsService,
         IGenericAttributeService genericAttributeService,
         IWorkContext workContext,
-        ICustomerService customerService)
+        ICustomerService customerService,
+        ISsoOidcOptionsCache oidcOptionsCache)
     {
         _settingService = settingService;
         _secretsService = secretsService;
         _genericAttributeService = genericAttributeService;
         _workContext = workContext;
         _customerService = customerService;
+        _oidcOptionsCache = oidcOptionsCache;
     }
 
     #endregion
@@ -52,24 +57,15 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         var perStore = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeScope);
         var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
 
-        // Get all customer roles for the multi-select dropdown
-        var allRoles = await _customerService.GetAllCustomerRolesAsync(showHidden: true);
-        var availableRoles = allRoles.Select(role => new SelectListItem
-        {
-            Text = role.Name,
-            Value = role.Id.ToString()
-        }).ToList();
+        // Default-role choices: every role except the privileged ones, which SSO never grants.
+        var availableRoles = (await _customerService.GetAllCustomerRolesAsync(showHidden: true))
+            .Where(role => !SsoRoles.IsPrivileged(role.SystemName))
+            .Select(role => new SelectListItem { Text = role.Name, Value = role.Id.ToString() })
+            .ToList();
 
-        // Parse the comma-separated role IDs from DefaultRoleSystemName
-        var selectedRoleIds = new List<int>();
-        if (!string.IsNullOrEmpty(perStore.DefaultRoleSystemName))
-        {
-            selectedRoleIds = perStore.DefaultRoleSystemName
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(id => int.TryParse(id.Trim(), out var roleId) ? roleId : 0)
-                .Where(id => id > 0)
-                .ToList();
-        }
+        var availableBindings = Enum.GetValues<SamlBinding>()
+            .Select(binding => new SelectListItem { Value = binding.ToString(), Text = binding.ToDisplayName() })
+            .ToList();
 
         var model = new ConfigurationModel
         {
@@ -113,11 +109,12 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
             FirstNameClaimType = perStore.FirstNameClaimType,
             LastNameClaimType = perStore.LastNameClaimType,
             GroupsClaimType = perStore.GroupsClaimType,
+            RolesClaimType = perStore.RolesClaimType,
 
             AutoRegister = perStore.AutoRegister,
-            DefaultRoleSystemName = perStore.DefaultRoleSystemName,
+            AvailableBindings = availableBindings,
             AvailableCustomerRoles = availableRoles,
-            SelectedCustomerRoleIds = selectedRoleIds,
+            DefaultRoleIds = perStore.DefaultRoleIds.ToList(),
             AllowedEmailDomains = perStore.AllowedEmailDomains,
             RefreshRolesOnLogin = perStore.RefreshRolesOnLogin,
             RedirectLoginToSso = perStore.RedirectLoginToSso,
@@ -125,7 +122,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
             PostLoginRedirectUrl = perStore.PostLoginRedirectUrl,
             PostLogoutRedirectUrl = perStore.PostLogoutRedirectUrl,
 
-            CustomAttributesJson = perStore.CustomAttributesJson,
+            AllowIdpInitiatedLogin = perStore.AllowIdpInitiatedLogin,
 
             IdpCertificatePreview = BuildSecretPreview(perStore.IdpCertificateBase64),
             SpPfxPreview = BuildSecretPreview(perStore.SpPfxBase64),
@@ -134,21 +131,22 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
             HasSsoBypassToken = !string.IsNullOrEmpty(systemWide.SsoBypassToken),
             LocalLoginAllowedRoles = systemWide.LocalLoginAllowedRoles,
             LoginAttemptCapPerHour = systemWide.LoginAttemptCapPerHour,
-            EnableAuditLogging = systemWide.EnableAuditLogging
+            EnableAuditLogging = systemWide.EnableAuditLogging,
+            AuditRetentionDays = systemWide.AuditRetentionDays
         };
 
         return model;
     }
 
-    public async Task<Customer> GetCurrentCustomer()
+    public async Task<Customer> GetCurrentCustomerAsync()
     {
         return await _workContext.GetCurrentCustomerAsync();
     }
 
-    public async Task ChangeSSOSope(int storeid)
+    public async Task SetStoreScopeAsync(int storeId)
     {
         await _genericAttributeService
-            .SaveAttributeAsync(await _workContext.GetCurrentCustomerAsync(), "SSOStoreScopeConfigurationAttribute", storeid);
+            .SaveAttributeAsync(await _workContext.GetCurrentCustomerAsync(), SSOAuthenticationDefaults.StoreScopeAttribute, storeId);
     }
 
     public async Task<int> GetActiveStoreScopeSSOAsync()
@@ -156,7 +154,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         var currentCustomer = await _workContext.GetCurrentCustomerAsync();
         //try to get store identifier from attributes
         var storeScope = await _genericAttributeService
-            .GetAttributeAsync<int>(currentCustomer, "SSOStoreScopeConfigurationAttribute");
+            .GetAttributeAsync<int>(currentCustomer, SSOAuthenticationDefaults.StoreScopeAttribute);
         return storeScope;
     }
 
@@ -164,15 +162,25 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
     public async Task ApplyModelToSettingsAsync(ConfigurationModel model)
     {
         int storeScope = await GetActiveStoreScopeSSOAsync();
-        var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
 
+        // A store scope shows only the per-store cards, so only per-store settings are posted.
+        // System-wide settings are saved only at "All stores", where their cards are; saving them
+        // from a store-scope post would overwrite them with the empty fields of cards that were
+        // not on the page.
         if (storeScope > 0)
+        {
             await SavePerStoreAsync(model, storeScope);
+            _oidcOptionsCache.InvalidateStore(storeScope);
+            await _settingService.ClearCacheAsync();
+            return;
+        }
 
+        var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
         systemWide.SsoBypassToken = ReprotectOrClear(model.SsoBypassToken, systemWide.SsoBypassToken, model.ClearSsoBypassToken);
         systemWide.LocalLoginAllowedRoles = model.LocalLoginAllowedRoles?.Trim() ?? string.Empty;
         systemWide.LoginAttemptCapPerHour = Math.Max(0, model.LoginAttemptCapPerHour);
         systemWide.EnableAuditLogging = model.EnableAuditLogging;
+        systemWide.AuditRetentionDays = Math.Max(0, model.AuditRetentionDays);
         await _settingService.SaveSettingAsync(systemWide, storeId: 0);
 
         await _settingService.ClearCacheAsync();
@@ -206,6 +214,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         await SavePerStoreDefaultsAsync(defaults, storeId);
 
         await _settingService.ClearCacheAsync();
+        _oidcOptionsCache.InvalidateStore(storeId);
         return toDelete.Count;
     }
 
@@ -217,6 +226,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
 
         await SaveAllPropertiesPerStoreAsync(settings, storeId);
         await _settingService.ClearCacheAsync();
+        _oidcOptionsCache.InvalidateStore(storeId);
     }
 
     #endregion
@@ -253,21 +263,28 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         perStore.SignedRequest = model.SignedRequest;
         perStore.SignLogoutRequest = model.SignLogoutRequest;
         perStore.EncryptedAssertion = model.EncryptedAssertion;
-        perStore.LoginBinding = model.LoginBinding?.Trim() ?? string.Empty;
-        perStore.LogoutBinding = model.LogoutBinding?.Trim() ?? string.Empty;
+        perStore.LoginBinding = model.LoginBinding;
+        perStore.LogoutBinding = model.LogoutBinding;
 
         perStore.EmailClaimType = model.EmailClaimType?.Trim() ?? string.Empty;
         perStore.UsernameClaimType = model.UsernameClaimType?.Trim() ?? string.Empty;
         perStore.FirstNameClaimType = model.FirstNameClaimType?.Trim() ?? string.Empty;
         perStore.LastNameClaimType = model.LastNameClaimType?.Trim() ?? string.Empty;
         perStore.GroupsClaimType = model.GroupsClaimType?.Trim() ?? string.Empty;
+        perStore.RolesClaimType = model.RolesClaimType?.Trim() ?? string.Empty;
 
         perStore.AutoRegister = model.AutoRegister;
         
-        // Convert selected role IDs to comma-separated string
-        perStore.DefaultRoleSystemName = model.SelectedCustomerRoleIds != null && model.SelectedCustomerRoleIds.Any()
-            ? string.Join(",", model.SelectedCustomerRoleIds)
-            : string.Empty;
+        // Only existing, non-privileged roles — the dropdown hides privileged ones, but a tampered
+        // post could still send their ids.
+        var defaultRoleIds = new List<int>();
+        foreach (var roleId in (model.DefaultRoleIds ?? new List<int>()).Distinct())
+        {
+            var role = await _customerService.GetCustomerRoleByIdAsync(roleId);
+            if (role is not null && !SsoRoles.IsPrivileged(role.SystemName))
+                defaultRoleIds.Add(role.Id);
+        }
+        perStore.DefaultRoleIds = defaultRoleIds;
         
         perStore.AllowedEmailDomains = model.AllowedEmailDomains?.Trim() ?? string.Empty;
         perStore.RefreshRolesOnLogin = model.RefreshRolesOnLogin;
@@ -276,7 +293,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         perStore.PostLoginRedirectUrl = model.PostLoginRedirectUrl?.Trim() ?? string.Empty;
         perStore.PostLogoutRedirectUrl = model.PostLogoutRedirectUrl?.Trim() ?? string.Empty;
 
-        perStore.CustomAttributesJson = model.CustomAttributesJson?.Trim() ?? string.Empty;
+        perStore.AllowIdpInitiatedLogin = model.AllowIdpInitiatedLogin;
 
         await SaveAllPropertiesPerStoreAsync(perStore, storeScope);
     }
@@ -322,9 +339,10 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.FirstNameClaimType, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.LastNameClaimType, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.GroupsClaimType, true, storeScope, false);
+        await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.RolesClaimType, true, storeScope, false);
 
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.AutoRegister, true, storeScope, false);
-        await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.DefaultRoleSystemName, true, storeScope, false);
+        await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.DefaultRoleIds, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.AllowedEmailDomains, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.RefreshRolesOnLogin, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.RedirectLoginToSso, true, storeScope, false);
@@ -332,7 +350,7 @@ public class ConfigurationModelFactory : IConfigurationModelFactory
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.PostLoginRedirectUrl, true, storeScope, false);
         await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.PostLogoutRedirectUrl, true, storeScope, false);
 
-        await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.CustomAttributesJson, true, storeScope, false);
+        await _settingService.SaveSettingOverridablePerStoreAsync(src, x => x.AllowIdpInitiatedLogin, true, storeScope, false);
     }
 
     #endregion

@@ -36,7 +36,7 @@ public class SamlMetadataSigningCert
 }
 
 /// <summary>
-/// In-memory snapshot of the bits of an IdP <c>EntityDescriptor</c> the M14
+/// In-memory snapshot of the bits of an IdP <c>EntityDescriptor</c> the
 /// Test Connection handshake compares against the stored per-store configuration.
 /// </summary>
 public class SamlIdpMetadataSnapshot

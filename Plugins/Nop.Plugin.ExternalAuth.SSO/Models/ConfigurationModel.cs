@@ -132,11 +132,17 @@ public record ConfigurationModel : BaseNopModel
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.EncryptedAssertion")]
     public bool EncryptedAssertion { get; set; }
 
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AllowIdpInitiatedLogin")]
+    public bool AllowIdpInitiatedLogin { get; set; }
+
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.LoginBinding")]
-    public string LoginBinding { get; set; } = string.Empty;
+    public SamlBinding LoginBinding { get; set; }
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.LogoutBinding")]
-    public string LogoutBinding { get; set; } = string.Empty;
+    public SamlBinding LogoutBinding { get; set; }
+
+    /// <summary>Binding choices for the two dropdowns (value = enum name, text = HTTP-Redirect / HTTP-POST).</summary>
+    public IList<SelectListItem> AvailableBindings { get; set; } = new List<SelectListItem>();
 
     #endregion
 
@@ -157,6 +163,9 @@ public record ConfigurationModel : BaseNopModel
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.GroupsClaimType")]
     public string GroupsClaimType { get; set; } = string.Empty;
 
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.RolesClaimType")]
+    public string RolesClaimType { get; set; } = string.Empty;
+
     #endregion
 
     #region User provisioning
@@ -164,19 +173,18 @@ public record ConfigurationModel : BaseNopModel
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AutoRegister")]
     public bool AutoRegister { get; set; }
 
-    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.DefaultRoleSystemName")]
-    public string DefaultRoleSystemName { get; set; } = string.Empty;
-
     /// <summary>
-    /// Available customer roles for multi-select dropdown
+    /// Roles offered as default roles (privileged roles left out).
     /// </summary>
     public IList<SelectListItem> AvailableCustomerRoles { get; set; }
 
     /// <summary>
-    /// Selected customer role IDs for multi-select dropdown
+    /// The store's default role ids. Optional: no selection means no default role. Initialised so
+    /// MVC's implicit <c>[Required]</c> for a non-nullable reference (nullable context) does not
+    /// reject a post with nothing selected.
     /// </summary>
-    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.DefaultRoleSystemName")]
-    public IList<int> SelectedCustomerRoleIds { get; set; }
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.DefaultRoles")]
+    public IList<int> DefaultRoleIds { get; set; } = new List<int>();
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AllowedEmailDomains")]
     public string AllowedEmailDomains { get; set; } = string.Empty;
@@ -196,13 +204,6 @@ public record ConfigurationModel : BaseNopModel
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.PostLogoutRedirectUrl")]
     public string PostLogoutRedirectUrl { get; set; } = string.Empty;
-
-    #endregion
-
-    #region Custom Attributes
-
-    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.CustomAttributesJson")]
-    public string CustomAttributesJson { get; set; } = string.Empty;
 
     #endregion
 
@@ -249,6 +250,9 @@ public record ConfigurationModel : BaseNopModel
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.EnableAuditLogging")]
     public bool EnableAuditLogging { get; set; } = true;
+
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AuditRetentionDays")]
+    public int AuditRetentionDays { get; set; }
 
     #endregion
 }

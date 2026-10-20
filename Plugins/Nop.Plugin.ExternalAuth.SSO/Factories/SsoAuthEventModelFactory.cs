@@ -16,10 +16,10 @@ public class SsoAuthEventModelFactory : ISsoAuthEventModelFactory
 {
     #region Fields
 
-    private readonly IDateTimeHelper _dateTimeHelper;
-    private readonly ILocalizationService _localizationService;
-    private readonly ISsoEventService _eventService;
-    private readonly IStoreService _storeService;
+    protected readonly IDateTimeHelper _dateTimeHelper;
+    protected readonly ILocalizationService _localizationService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly IStoreService _storeService;
 
     #endregion
 
@@ -113,9 +113,10 @@ public class SsoAuthEventModelFactory : ISsoAuthEventModelFactory
         return new List<SelectListItem>
         {
             new() { Value = string.Empty, Text = anyLabel },
-            new() { Value = SsoAuthEventTypes.Login, Text = "Login" },
+            new() { Value = SsoAuthEventTypes.Login, Text = "Login started" },
             new() { Value = SsoAuthEventTypes.AutoRegistered, Text = "Auto-registered" },
             new() { Value = SsoAuthEventTypes.Linked, Text = "Linked" },
+            new() { Value = SsoAuthEventTypes.SignedIn, Text = "Signed in" },
             new() { Value = SsoAuthEventTypes.Slo, Text = "SLO" },
             new() { Value = SsoAuthEventTypes.Failed, Text = "Failed" },
             new() { Value = SsoAuthEventTypes.BypassDenied, Text = "Bypass denied" },

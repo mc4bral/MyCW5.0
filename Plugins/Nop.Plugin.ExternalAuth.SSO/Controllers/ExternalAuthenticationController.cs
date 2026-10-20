@@ -24,23 +24,23 @@ namespace Nop.Plugin.ExternalAuth.SSO.Controllers;
 /// <c>LoginCallback</c>; that action reads the claims and delegates to
 /// <see cref="ISsoUserProvisioningService"/> for the security gates + nop handoff.
 ///
-/// SAML is routed through this controller too, but in M4 it warns and falls back to the
-/// standard login page — the real SAML implementation lands in M6.
+/// SAML starts here too: <c>Login</c> hands it to <see cref="ISamlChallengeBuilder"/>, and the
+/// IdP's response comes back to <c>SamlController</c> (<c>/saml/acs</c>), not to <c>LoginCallback</c>.
 /// </remarks>
 public class ExternalAuthenticationController : BasePluginController
 {
     #region Fields
 
-    private readonly IAuthenticationPluginManager _authenticationPluginManager;
-    private readonly ILocalizationService _localizationService;
-    private readonly INotificationService _notificationService;
-    private readonly ISamlChallengeBuilder _samlChallengeBuilder;
-    private readonly ISettingService _settingService;
-    private readonly ISsoEventService _eventService;
-    private readonly ISsoRateLimiter _rateLimiter;
-    private readonly ISsoUserProvisioningService _provisioningService;
-    private readonly IStoreContext _storeContext;
-    private readonly IWorkContext _workContext;
+    protected readonly IAuthenticationPluginManager _authenticationPluginManager;
+    protected readonly ILocalizationService _localizationService;
+    protected readonly INotificationService _notificationService;
+    protected readonly ISamlChallengeBuilder _samlChallengeBuilder;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly ISsoRateLimiter _rateLimiter;
+    protected readonly ISsoUserProvisioningService _provisioningService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IWorkContext _workContext;
 
     #endregion
 
@@ -82,19 +82,12 @@ public class ExternalAuthenticationController : BasePluginController
     {
         var store = await _storeContext.GetCurrentStoreAsync();
 
-        // M11 — rate-cap check up front so a runaway redirect loop or scripted
+        // rate-cap check up front so a runaway redirect loop or scripted
         // enumeration short-circuits at the cheapest layer.
         if (!await _rateLimiter.CheckAndIncrementAsync())
         {
-            await _eventService.LogAsync(
-                eventType: SsoAuthEventTypes.Failed,
-                protocol: string.Empty,
-                storeId: store.Id,
-                customerId: null,
-                customerEmail: string.Empty,
-                idpSubject: string.Empty,
-                notes: SsoFailureReasons.Format(SsoFailureReasons.LoginRetryCapHit,
-                    "SSO login rate-limit exceeded for this client IP."));
+            await _eventService.LogFailureAsync(string.Empty, SsoFailureReasons.LoginRetryCapHit,
+                "SSO login rate-limit exceeded for this client IP.");
 
             _notificationService.WarningNotification(
                 await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Login.RateLimited"));
@@ -109,7 +102,7 @@ public class ExternalAuthenticationController : BasePluginController
             await _workContext.GetCurrentCustomerAsync(),
             store.Id);
 
-        if (!settings.IsEnabled || settings.Protocol == SsoProtocol.Off)
+        if (!methodIsAvailable || !settings.IsEnabled || settings.Protocol == SsoProtocol.Off)
         {
             _notificationService.WarningNotification(
                 await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Login.NotAvailable"));
@@ -130,7 +123,7 @@ public class ExternalAuthenticationController : BasePluginController
         }
 #endif
 
-        // SAML branch (M6) — delegate to the challenge builder which handles AuthnRequest
+        // SAML branch — delegate to the challenge builder which handles AuthnRequest
         // construction, correlation-cookie issuance, the audit Login row, and the redirect
         // IActionResult creation. Any IdP-side or config-side failure is reported back to
         // the user as a notification + redirect to /login.
@@ -159,6 +152,12 @@ public class ExternalAuthenticationController : BasePluginController
             SSOAuthenticationDefaults.ErrorCallback,
             Url.RouteUrl(NopRouteNames.General.LOGIN, new { returnUrl }));
 
+        // "Login started", as the SAML challenge writes, so both protocols show the same trail.
+        await _eventService.LogAsync(
+            eventType: SsoAuthEventTypes.Login,
+            protocol: SsoProtocolNames.Oidc,
+            notes: "OIDC challenge sent to the IdP.");
+
         return Challenge(authenticationProperties, SSOAuthenticationDefaults.OidcAuthenticationScheme);
     }
 
@@ -169,7 +168,6 @@ public class ExternalAuthenticationController : BasePluginController
     /// </summary>
     public async Task<IActionResult> LoginCallback(string? returnUrl)
     {
-        var store = await _storeContext.GetCurrentStoreAsync();
 
         var authenticateResult = await HttpContext.AuthenticateAsync(
             SSOAuthenticationDefaults.OidcAuthenticationScheme);
@@ -177,14 +175,8 @@ public class ExternalAuthenticationController : BasePluginController
         if (!authenticateResult.Succeeded || authenticateResult.Principal is null
             || !authenticateResult.Principal.Claims.Any())
         {
-            await _eventService.LogAsync(
-                eventType: SsoAuthEventTypes.Failed,
-                protocol: SsoProtocolNames.Oidc,
-                storeId: store.Id,
-                customerId: null,
-                customerEmail: string.Empty,
-                idpSubject: string.Empty,
-                notes: $"OIDC AuthenticateAsync did not succeed: {authenticateResult.Failure?.Message ?? "no principal"}");
+            await _eventService.LogFailureAsync(SsoProtocolNames.Oidc, SsoFailureReasons.OidcCallbackFailed,
+                $"OIDC AuthenticateAsync did not succeed: {authenticateResult.Failure?.Message ?? "no principal"}");
 
             return RedirectToRoute(NopRouteNames.General.LOGIN, new { returnUrl });
         }
@@ -194,12 +186,16 @@ public class ExternalAuthenticationController : BasePluginController
         var accessToken = await HttpContext.GetTokenAsync(
             SSOAuthenticationDefaults.OidcAuthenticationScheme,
             "access_token");
+        var idToken = await HttpContext.GetTokenAsync(
+            SSOAuthenticationDefaults.OidcAuthenticationScheme,
+            "id_token");
 
         return await _provisioningService.HandleAsync(
             authenticateResult.Principal,
             SsoProtocolNames.Oidc,
             accessToken,
-            returnUrl);
+            returnUrl,
+            idToken);
     }
 
     #endregion

@@ -9,7 +9,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Data.Mapping;
 
 /// <summary>
 /// FluentMigrator builder for the <see cref="SsoGroupRoleMapping"/> table (<c>SSO_GroupRoleMapping</c>).
-/// Column lengths follow SSOPlan.v2.md §3.2.
+/// Columns: References/SSO_Plugin_Reference.md §3.
 /// </summary>
 public class SsoGroupRoleMappingBuilder : NopEntityBuilder<SsoGroupRoleMapping>
 {

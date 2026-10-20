@@ -11,7 +11,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Domain;
 /// survives group display-name changes. The privileged-role guard
 /// (<see cref="Services.ISsoGroupRoleMappingService"/> &mdash; not yet implemented) hard-blocks
 /// <c>Administrators</c> from this mapping regardless of configuration.
-/// See SSOPlan.v2.md §3.8.
+/// See References/SSO_Plugin_Reference.md §3 and §5.5.
 /// </remarks>
 public class SsoGroupRoleMapping : BaseEntity
 {

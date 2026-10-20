@@ -4,7 +4,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Models;
 /// Outcome of comparing the stored IdP configuration against the SAML 2.0 metadata
 /// published by the IdP. The handshake proves that the stored signing certificate is
 /// the one the IdP currently uses, so a later real SAML response will validate.
-/// Ported from the legacy <c>SSOHandshakeResult</c> per the M14 commit.
+/// Ported from the 4.9 plugin's <c>SSOHandshakeResult</c>.
 /// </summary>
 public class HandshakeResult
 {

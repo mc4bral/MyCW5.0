@@ -23,9 +23,9 @@ public class SsoRateLimiter : ISsoRateLimiter
 
     #region Fields
 
-    private readonly IStaticCacheManager _cacheManager;
-    private readonly ISettingService _settingService;
-    private readonly IWebHelper _webHelper;
+    protected readonly IStaticCacheManager _cacheManager;
+    protected readonly ISettingService _settingService;
+    protected readonly IWebHelper _webHelper;
 
     #endregion
 
@@ -46,7 +46,7 @@ public class SsoRateLimiter : ISsoRateLimiter
     #region Methods
 
     /// <inheritdoc />
-    public async Task<bool> CheckAndIncrementAsync()
+    public async Task<bool> CheckAndIncrementAsync(string bucket = ISsoRateLimiter.LoginBucket)
     {
         var settings = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
         if (settings.LoginAttemptCapPerHour <= 0)
@@ -56,7 +56,7 @@ public class SsoRateLimiter : ISsoRateLimiter
         if (string.IsNullOrWhiteSpace(ip))
             return true; // cannot rate-limit without an IP; fail open rather than break login
 
-        var cacheKey = new CacheKey(CacheKeyPrefix + ip)
+        var cacheKey = new CacheKey($"{CacheKeyPrefix}{bucket}.{ip}")
         {
             CacheTime = (int)WindowDuration.TotalMinutes
         };

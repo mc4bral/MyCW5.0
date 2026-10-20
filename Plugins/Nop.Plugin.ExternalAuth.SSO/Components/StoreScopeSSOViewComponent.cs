@@ -10,11 +10,18 @@ namespace Nop.Plugin.ExternalAuth.SSO.Components;
 /// <summary>
 /// Represents a view component that displays the store scope configuration
 /// </summary>
+/// <remarks>
+/// A near copy of nop's own <c>StoreScopeConfigurationViewComponent</c>. It exists because nop's scope
+/// is one value shared by every settings page, while the SSO pages keep their own
+/// (<c>SSOAuthenticationDefaults.StoreScopeAttribute</c>), so moving between stores here does not
+/// change the store other admin pages edit. Differences from nop's: the route names, and no
+/// "check all" box (SSO has no per-field override checkboxes — picking a store is the override).
+/// </remarks>
 public partial class StoreScopeSSOViewComponent : NopViewComponent
 {
     #region Fields
 
-    private readonly IConfigurationModelFactory _configurationModelFactory;
+    protected readonly IConfigurationModelFactory _configurationModelFactory;
 
     protected readonly IStoreService _storeService;
 

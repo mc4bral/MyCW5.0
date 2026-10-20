@@ -1,7 +1,9 @@
 using Nop.Core;
 using Nop.Data;
+using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Domain;
 using Nop.Services.Customers;
+using Nop.Services.Logging;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Services;
 
@@ -10,19 +12,11 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 /// </summary>
 public class SsoGroupRoleMappingService : ISsoGroupRoleMappingService
 {
-    /// <summary>
-    /// Role system names that can never be granted via SSO. Hard-coded — these are not
-    /// admin-configurable, by design. Matches the SSOPlan.v2.md §3.8 privileged-role guard.
-    /// </summary>
-    private static readonly HashSet<string> PrivilegedRoleSystemNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Administrators"
-    };
-
     #region Fields
 
-    private readonly ICustomerService _customerService;
-    private readonly IRepository<SsoGroupRoleMapping> _repository;
+    protected readonly ICustomerService _customerService;
+    protected readonly ILogger _logger;
+    protected readonly IRepository<SsoGroupRoleMapping> _repository;
 
     #endregion
 
@@ -30,9 +24,11 @@ public class SsoGroupRoleMappingService : ISsoGroupRoleMappingService
 
     public SsoGroupRoleMappingService(
         ICustomerService customerService,
+        ILogger logger,
         IRepository<SsoGroupRoleMapping> repository)
     {
         _customerService = customerService;
+        _logger = logger;
         _repository = repository;
     }
 
@@ -98,14 +94,22 @@ public class SsoGroupRoleMappingService : ISsoGroupRoleMappingService
 
         var roleIds = mappings.Select(m => m.CustomerRoleId).Distinct().ToList();
 
-        // Defence-in-depth: even if a privileged role somehow ended up in a mapping row
-        // (data corruption, direct SQL edit, etc.), filter it out before returning.
+        // Defence-in-depth: the mapping form already refuses privileged roles, so one here means
+        // the data was edited outside the admin. Filter it out and leave a warning in nop's log.
         var safe = new List<int>(roleIds.Count);
         foreach (var roleId in roleIds)
         {
             var role = await _customerService.GetCustomerRoleByIdAsync(roleId);
             if (role is null) continue;
-            if (PrivilegedRoleSystemNames.Contains(role.SystemName)) continue;
+
+            if (SsoRoles.IsPrivileged(role.SystemName))
+            {
+                var blocked = mappings.Where(m => m.CustomerRoleId == role.Id).Select(m => $"#{m.Id} ({m.IdpGroupId})");
+                await _logger.WarningAsync(
+                    $"SSO: group→role mapping(s) {string.Join(", ", blocked)} for store {storeId} grant the privileged role '{role.SystemName}'. Ignored at login; delete or fix the mapping.");
+                continue;
+            }
+
             safe.Add(role.Id);
         }
 

@@ -13,8 +13,8 @@ public class OnboardingReportService : IOnboardingReportService
 {
     #region Fields
 
-    private readonly ISettingService _settingService;
-    private readonly IStoreService _storeService;
+    protected readonly ISettingService _settingService;
+    protected readonly IStoreService _storeService;
 
     #endregion
 
@@ -206,6 +206,7 @@ public class OnboardingReportService : IOnboardingReportService
         sb.AppendLine("  - First name: " + WithDefault(settings.FirstNameClaimType, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"));
         sb.AppendLine("  - Last name:  " + WithDefault(settings.LastNameClaimType, "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"));
         sb.AppendLine("  - Groups:     " + WithDefault(settings.GroupsClaimType, "(none)"));
+        sb.AppendLine("  - App roles:  " + WithDefault(settings.RolesClaimType, "(none)"));
         sb.AppendLine();
     }
 

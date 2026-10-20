@@ -10,7 +10,7 @@
     var action = isCreate ? "GroupRoleMappingCreate" : "GroupRoleMappingEdit";
 }
 
-<form asp-controller="ExternalAuthSSO" asp-action="@action" method="post">
+<form asp-controller="@SsoAdminControllers.GroupRoleMappings" asp-action="@action" method="post">
     <input type="hidden" asp-for="Id" />
 
     <div class="content-header clearfix">
@@ -117,5 +117,5 @@
 {
     <nop-delete-confirmation asp-model-id="@Model.Id"
                              asp-button-id="mapping-delete"
-                             asp-action="@Url.Action("GroupRoleMappingDelete", "ExternalAuthSSO")" />
+                             asp-action="@Url.Action("GroupRoleMappingDelete", SsoAdminControllers.GroupRoleMappings)" />
 }

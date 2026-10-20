@@ -9,7 +9,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Settings;
 /// Persisted via nopCommerce's standard <c>ISettings</c> mechanism with per-store overrides
 /// (<c>SaveSettingOverridablePerStoreAsync</c>). Sensitive fields are stored as ciphertext —
 /// callers must round-trip through <c>ISsoSecretsService</c> at the controller boundary
-/// (write-encrypt on POST, read-decrypt on GET). See SSOPlan.v2.md §3.3.
+/// (write-encrypt on POST, read-decrypt on GET). See References/SSO_Plugin_Reference.md §7.1.
 /// </remarks>
 public class SsoConfigurationSettings : ISettings
 {
@@ -31,7 +31,7 @@ public class SsoConfigurationSettings : ISettings
     public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Sort order for the SSO Accounts admin list (M12). Lower numbers appear first.
+    /// Sort order for the SSO Accounts admin list. Lower numbers appear first.
     /// Defaults to 0 — admins can renumber per store to group/highlight specific tenants.
     /// </summary>
     public int DisplayOrder { get; set; }
@@ -161,14 +161,21 @@ public class SsoConfigurationSettings : ISettings
     public bool EncryptedAssertion { get; set; }
 
     /// <summary>
-    /// SAML binding for login requests (e.g. <c>HTTP-Redirect</c>, <c>HTTP-POST</c>).
+    /// Accept a SAML response the store did not request (IdP-initiated login, e.g. a tile in the
+    /// IdP's portal). Off: the ACS requires the correlation cookie set by the store's own
+    /// AuthnRequest and rejects anything else.
     /// </summary>
-    public string LoginBinding { get; set; } = "HTTP-Redirect";
+    public bool AllowIdpInitiatedLogin { get; set; }
 
     /// <summary>
-    /// SAML binding for logout requests.
+    /// SAML binding for the AuthnRequest sent to the IdP.
     /// </summary>
-    public string LogoutBinding { get; set; } = "HTTP-Redirect";
+    public SamlBinding LoginBinding { get; set; } = SamlBinding.HttpRedirect;
+
+    /// <summary>
+    /// SAML binding for logout messages; also advertised in the SP metadata.
+    /// </summary>
+    public SamlBinding LogoutBinding { get; set; } = SamlBinding.HttpRedirect;
 
     #endregion
 
@@ -199,6 +206,12 @@ public class SsoConfigurationSettings : ISettings
     /// </summary>
     public string GroupsClaimType { get; set; } = "groups";
 
+    /// <summary>
+    /// Claim type that carries app roles (Entra <c>roles</c>). Its values are matched by the same
+    /// group → role mappings as group ids; Entra never sends an overage for roles. Empty = not read.
+    /// </summary>
+    public string RolesClaimType { get; set; } = "roles";
+
     #endregion
 
     #region User provisioning
@@ -209,9 +222,11 @@ public class SsoConfigurationSettings : ISettings
     public bool AutoRegister { get; set; } = true;
 
     /// <summary>
-    /// Default role assigned to auto-registered customers (system name).
+    /// Ids of the customer roles every SSO customer of the store gets (part of the role set SSO
+    /// manages — see group → role mapping). Empty = none beyond nop's own <c>Registered</c>.
+    /// Privileged roles are never applied, whatever is stored here.
     /// </summary>
-    public string DefaultRoleSystemName { get; set; } = "Registered";
+    public List<int> DefaultRoleIds { get; set; } = new();
 
     /// <summary>
     /// Allowed email-domain suffixes (CSV). Empty = all domains accepted. Wildcards supported (e.g. <c>*.example.com</c>).
@@ -235,12 +250,6 @@ public class SsoConfigurationSettings : ISettings
 
     #region Custom attributes
 
-    /// <summary>
-    /// Free-form JSON for extensibility — passed to plugin extensions that need
-    /// per-store configuration we don't model explicitly. Stored as-is; no validation
-    /// beyond "is parseable JSON" (validation rule applied at form post).
-    /// </summary>
-    public string CustomAttributesJson { get; set; } = string.Empty;
 
     #endregion
 

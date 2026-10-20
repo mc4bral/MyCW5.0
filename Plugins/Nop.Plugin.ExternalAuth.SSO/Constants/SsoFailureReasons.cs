@@ -25,7 +25,7 @@ public static class SsoFailureReasons
     /// <summary>IdP Entity ID / SSO URL / OIDC Authority was empty after resolving defaults.</summary>
     public const string IdpConfigIncomplete = "idp_config_incomplete";
 
-    /// <summary>Hard-cap on login attempts in a short window was hit (rate limiter — M11).</summary>
+    /// <summary>Hard-cap on login attempts in a short window was hit (rate limiter).</summary>
     public const string LoginRetryCapHit = "login_retry_cap_hit";
 
     /// <summary>Unhandled exception while building the challenge.</summary>
@@ -55,6 +55,19 @@ public static class SsoFailureReasons
     /// </summary>
     public const string AcsAdminAccountBlocked = "acs_admin_account_blocked";
 
+    /// <summary>
+    /// The sign-in succeeded but the IdP sent a group-overage marker instead of the group list,
+    /// so group → role sync was skipped and the customer's roles were left unchanged. Recorded in
+    /// the success row's notes, not as a failure.
+    /// </summary>
+    public const string GroupsOverage = "groups_overage";
+
+    /// <summary>The OIDC callback could not authenticate against the handler (no principal or a handler failure).</summary>
+    public const string OidcCallbackFailed = "oidc_callback_failed";
+
+    /// <summary>The DEBUG mock IdP's "failure" scenario.</summary>
+    public const string MockFailure = "mock_failure";
+
     /// <summary>No existing customer matched the email and <c>AutoRegister</c> is off.</summary>
     public const string AcsAutoRegisterDisabled = "acs_auto_register_disabled";
 
@@ -72,7 +85,7 @@ public static class SsoFailureReasons
 
     /// <summary>
     /// Bypass cookie was present but the resulting customer was not in any of the
-    /// roles listed in <c>LocalLoginAllowedRoles</c> (M5 LocalLoginEnforcementFilter).
+    /// roles listed in <c>LocalLoginAllowedRoles</c> (LocalLoginEnforcementFilter).
     /// </summary>
     public const string BypassNotInRole = "bypass_not_in_role";
 

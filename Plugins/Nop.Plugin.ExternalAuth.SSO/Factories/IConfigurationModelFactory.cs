@@ -31,8 +31,21 @@ public interface IConfigurationModelFactory
     /// <param name="storeId">Store id to wipe. Must be &gt; 0; values &lt;= 0 are no-ops.</param>
     /// <returns>The number of Setting rows deleted.</returns>
     Task<int> DeleteSettingsForStoreAsync(int storeId);
-    Task ChangeSSOSope(int storeid);
-    Task<Customer> GetCurrentCustomer();
+    /// <summary>
+    /// Set the admin's SSO store scope (kept in the plugin's own customer attribute, separate from
+    /// nop's settings scope). 0 = "All stores".
+    /// </summary>
+    /// <param name="storeId">Store id, or 0</param>
+    Task SetStoreScopeAsync(int storeId);
+
+    /// <summary>
+    /// The signed-in admin, for audit rows.
+    /// </summary>
+    Task<Customer> GetCurrentCustomerAsync();
+
+    /// <summary>
+    /// The admin's SSO store scope; 0 = "All stores".
+    /// </summary>
     Task<int> GetActiveStoreScopeSSOAsync();
 
     /// <summary>

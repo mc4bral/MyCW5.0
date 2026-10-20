@@ -4,7 +4,7 @@ using Nop.Web.Framework.Mvc.ModelBinding;
 namespace Nop.Plugin.ExternalAuth.SSO.Models;
 
 /// <summary>
-/// Grid row model for the audit-log admin page (M10).
+/// Grid row model for the audit-log admin page.
 /// </summary>
 public record SsoAuthEventModel : BaseNopEntityModel
 {

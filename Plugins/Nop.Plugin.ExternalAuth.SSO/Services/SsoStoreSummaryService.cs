@@ -1,4 +1,3 @@
-using System.Security.Cryptography.X509Certificates;
 using Nop.Data;
 using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Domain;
@@ -11,6 +10,12 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 /// <summary>
 /// Default implementation of <see cref="ISsoStoreSummaryService"/>.
 /// </summary>
+/// <remarks>
+/// The per-store figures (setup date, users, last successful login) come from the audit log —
+/// nop's <c>ExternalAuthenticationRecord</c> has no store column, so it cannot say which store a
+/// customer signs in through. They are aggregated in SQL, one query per figure for all stores, so
+/// the page does not grow slower as the log grows. Clearing the audit log resets them.
+/// </remarks>
 public class SsoStoreSummaryService : ISsoStoreSummaryService
 {
     /// <summary>
@@ -21,15 +26,16 @@ public class SsoStoreSummaryService : ISsoStoreSummaryService
     private static readonly string[] SuccessEventTypes =
     {
         SsoAuthEventTypes.AutoRegistered,
-        SsoAuthEventTypes.Linked
+        SsoAuthEventTypes.Linked,
+        SsoAuthEventTypes.SignedIn
     };
 
     #region Fields
 
-    private readonly IRepository<SsoAuthEvent> _eventRepository;
-    private readonly ISettingService _settingService;
-    private readonly ISsoSecretsService _secretsService;
-    private readonly IStoreService _storeService;
+    protected readonly IRepository<SsoAuthEvent> _eventRepository;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoSecretsService _secretsService;
+    protected readonly IStoreService _storeService;
 
     #endregion
 
@@ -49,45 +55,94 @@ public class SsoStoreSummaryService : ISsoStoreSummaryService
 
     #endregion
 
+    #region Utilities
+
+    private sealed record StoreTelemetry(DateTime? FirstEventUtc, DateTime? LastSuccessUtc, int Users);
+
+    /// <summary>
+    /// Setup date, last successful sign-in and distinct signed-in customers for the given stores,
+    /// computed by the database.
+    /// </summary>
+    private async Task<IDictionary<int, StoreTelemetry>> GetTelemetryAsync(IList<int> storeIds)
+    {
+        if (storeIds.Count == 0)
+            return new Dictionary<int, StoreTelemetry>();
+
+        var events = _eventRepository.Table.Where(e => storeIds.Contains(e.StoreId));
+        var successes = events.Where(e => SuccessEventTypes.Contains(e.EventType));
+
+        var firstEvents = await events
+            .GroupBy(e => e.StoreId)
+            .Select(g => new { StoreId = g.Key, First = g.Min(e => e.OccurredOnUtc) })
+            .ToListAsync();
+
+        var lastSuccesses = await successes
+            .GroupBy(e => e.StoreId)
+            .Select(g => new { StoreId = g.Key, Last = g.Max(e => e.OccurredOnUtc) })
+            .ToListAsync();
+
+        var users = await successes
+            .Where(e => e.CustomerId != null)
+            .Select(e => new { e.StoreId, e.CustomerId })
+            .Distinct()
+            .GroupBy(e => e.StoreId)
+            .Select(g => new { StoreId = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        return storeIds.ToDictionary(
+            id => id,
+            id => new StoreTelemetry(
+                firstEvents.FirstOrDefault(x => x.StoreId == id)?.First,
+                lastSuccesses.FirstOrDefault(x => x.StoreId == id)?.Last,
+                users.FirstOrDefault(x => x.StoreId == id)?.Count ?? 0));
+    }
+
+    private DateTime? TryGetCertNotAfter(SsoConfigurationSettings settings)
+    {
+        if (settings.Protocol != SsoProtocol.Saml2
+            || !SsoCertificates.TryLoadIdpCertificate(_secretsService, settings, out var certificate, out _))
+            return null;
+
+        using (certificate)
+            return certificate!.NotAfter.ToUniversalTime();
+    }
+
+    #endregion
+
     #region Methods
 
     /// <inheritdoc />
     public async Task<IList<SsoStoreSummary>> ListAsync()
     {
-        var allStores = await _storeService.GetAllStoresAsync();
-        var result = new List<SsoStoreSummary>();
-
-        foreach (var store in allStores)
+        var configured = new List<(int StoreId, string StoreName, SsoConfigurationSettings Settings)>();
+        foreach (var store in await _storeService.GetAllStoresAsync())
         {
             var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
-            if (settings.Protocol == SsoProtocol.Off && !settings.IsEnabled)
-                continue;
-
-            var summary = new SsoStoreSummary
-            {
-                StoreId = store.Id,
-                StoreName = store.Name,
-                Protocol = settings.Protocol,
-                IsEnabled = settings.IsEnabled,
-                DisplayOrder = settings.DisplayOrder,
-                IdpCertificateNotAfter = TryGetCertNotAfter(settings)
-            };
-
-            // Single query per store to fold the user-count + last-login + setup date.
-            await PopulateTelemetryAsync(summary, store.Id);
-            result.Add(summary);
+            if (settings.Protocol != SsoProtocol.Off || settings.IsEnabled)
+                configured.Add((store.Id, store.Name, settings));
         }
 
-        return result;
+        var telemetry = await GetTelemetryAsync(configured.Select(c => c.StoreId).ToList());
+
+        return configured.Select(c => new SsoStoreSummary
+        {
+            StoreId = c.StoreId,
+            StoreName = c.StoreName,
+            Protocol = c.Settings.Protocol,
+            IsEnabled = c.Settings.IsEnabled,
+            DisplayOrder = c.Settings.DisplayOrder,
+            IdpCertificateNotAfter = TryGetCertNotAfter(c.Settings),
+            DateSetupUtc = telemetry[c.StoreId].FirstEventUtc,
+            LastSuccessfulLoginUtc = telemetry[c.StoreId].LastSuccessUtc,
+            NumberOfUsers = telemetry[c.StoreId].Users
+        }).ToList();
     }
 
     /// <inheritdoc />
     public async Task<IList<(int StoreId, string StoreName)>> ListUnconfiguredAsync()
     {
-        var allStores = await _storeService.GetAllStoresAsync();
         var unconfigured = new List<(int, string)>();
-
-        foreach (var store in allStores)
+        foreach (var store in await _storeService.GetAllStoresAsync())
         {
             var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
             if (settings.Protocol == SsoProtocol.Off && !settings.IsEnabled)
@@ -95,73 +150,6 @@ public class SsoStoreSummaryService : ISsoStoreSummaryService
         }
 
         return unconfigured;
-    }
-
-    #endregion
-
-    #region Utilities
-
-    /// <summary>
-    /// Populates the three audit-driven columns. Falls back to nulls when the store has
-    /// no audit history (newly configured tenant before its first login).
-    /// </summary>
-    private async Task PopulateTelemetryAsync(SsoStoreSummary summary, int storeId)
-    {
-        var events = await _eventRepository.GetAllAsync(q => q.Where(e => e.StoreId == storeId));
-
-        if (events.Count == 0)
-            return;
-
-        summary.DateSetupUtc = events.Min(e => e.OccurredOnUtc);
-
-        var successes = events
-            .Where(e => SuccessEventTypes.Contains(e.EventType))
-            .ToList();
-
-        if (successes.Count > 0)
-        {
-            summary.LastSuccessfulLoginUtc = successes.Max(e => e.OccurredOnUtc);
-            summary.NumberOfUsers = successes
-                .Where(e => e.CustomerId.HasValue)
-                .Select(e => e.CustomerId!.Value)
-                .Distinct()
-                .Count();
-        }
-    }
-
-    /// <summary>
-    /// Parses the SAML IdP certificate and returns its NotAfter. Null when not SAML, when
-    /// no cert is configured, or when the stored ciphertext fails to decrypt — admins will
-    /// see "(unknown)" in the column rather than a thrown exception breaking the whole grid.
-    /// </summary>
-    private DateTime? TryGetCertNotAfter(SsoConfigurationSettings settings)
-    {
-        if (settings.Protocol != SsoProtocol.Saml2)
-            return null;
-
-        if (string.IsNullOrWhiteSpace(settings.IdpCertificateBase64))
-            return null;
-
-        if (!_secretsService.TryUnprotect(settings.IdpCertificateBase64, out var plaintext)
-            || string.IsNullOrWhiteSpace(plaintext))
-            return null;
-
-        try
-        {
-            var stripped = new string(plaintext
-                .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
-                .Replace("-----END CERTIFICATE-----", string.Empty)
-                .Where(c => !char.IsWhiteSpace(c))
-                .ToArray());
-
-            var bytes = Convert.FromBase64String(stripped);
-            var cert = X509CertificateLoader.LoadCertificate(bytes);
-            return cert.NotAfter.ToUniversalTime();
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     #endregion

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Nop.Core.Http;
 using Nop.Plugin.ExternalAuth.SSO.Services.Saml;
 using Nop.Web.Framework.Controllers;
 using Nop.Web.Framework.Mvc.Filters;
@@ -20,9 +21,9 @@ public class SamlController : BasePluginController
 {
     #region Fields
 
-    private readonly ISamlLogoutHandler _logoutHandler;
-    private readonly ISamlMetadataBuilder _metadataBuilder;
-    private readonly ISamlResponseProcessor _responseProcessor;
+    protected readonly ISamlLogoutHandler _logoutHandler;
+    protected readonly ISamlMetadataBuilder _metadataBuilder;
+    protected readonly ISamlResponseProcessor _responseProcessor;
 
     #endregion
 
@@ -83,7 +84,8 @@ public class SamlController : BasePluginController
     /// <list type="bullet">
     ///   <item>contains <c>SAMLRequest</c> → IdP-initiated logout (handle + reply with <c>LogoutResponse</c>);</item>
     ///   <item>contains <c>SAMLResponse</c> → callback after SP-initiated logout (validate, land home);</item>
-    ///   <item>neither → SP-initiated logout (build <c>LogoutRequest</c>, redirect to IdP SLO endpoint).</item>
+    ///   <item>neither → nop's logout, which signs out locally and then federates through
+    ///         <c>LogoutActionsFilter</c>.</item>
     /// </list>
     /// </summary>
     [HttpGet]
@@ -99,7 +101,7 @@ public class SamlController : BasePluginController
         if (HasSamlField("SAMLResponse"))
             return await _logoutHandler.HandleLogoutResponseAsync(Request);
 
-        return await _logoutHandler.InitiateAsync();
+        return RedirectToRoute(NopRouteNames.Standard.LOGOUT);
     }
 
     /// <summary>

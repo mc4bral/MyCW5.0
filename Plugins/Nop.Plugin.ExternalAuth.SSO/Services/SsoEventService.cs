@@ -16,11 +16,12 @@ public class SsoEventService : ISsoEventService
 {
     #region Fields
 
-    private readonly IRepository<SsoAuthEvent> _repository;
-    private readonly ILogger _logger;
-    private readonly ISettingService _settingService;
-    private readonly IWebHelper _webHelper;
-    private readonly IWorkContext _workContext;
+    protected readonly IRepository<SsoAuthEvent> _repository;
+    protected readonly ILogger _logger;
+    protected readonly ISettingService _settingService;
+    protected readonly IStoreContext _storeContext;
+    protected readonly IWebHelper _webHelper;
+    protected readonly IWorkContext _workContext;
 
     #endregion
 
@@ -30,12 +31,14 @@ public class SsoEventService : ISsoEventService
         IRepository<SsoAuthEvent> repository,
         ILogger logger,
         ISettingService settingService,
+        IStoreContext storeContext,
         IWebHelper webHelper,
         IWorkContext workContext)
     {
         _repository = repository;
         _logger = logger;
         _settingService = settingService;
+        _storeContext = storeContext;
         _webHelper = webHelper;
         _workContext = workContext;
     }
@@ -45,18 +48,34 @@ public class SsoEventService : ISsoEventService
     #region Methods
 
     /// <inheritdoc />
+    public Task LogFailureAsync(
+        string protocol,
+        string reason,
+        string detail,
+        int? customerId = null,
+        string? customerEmail = null,
+        string? idpSubject = null)
+        => LogAsync(
+            eventType: SsoAuthEventTypes.Failed,
+            protocol: protocol,
+            customerId: customerId,
+            customerEmail: customerEmail,
+            idpSubject: idpSubject,
+            notes: SsoFailureReasons.Format(reason, detail));
+
+    /// <inheritdoc />
     public async Task LogAsync(
         string eventType,
         string protocol,
-        int storeId,
-        int? customerId,
-        string customerEmail,
-        string idpSubject,
+        int? customerId = null,
+        string? customerEmail = null,
+        string? idpSubject = null,
         string? notes = null,
+        int? storeId = null,
         bool forced = false)
     {
-        // M13 — master kill switch for audit writes. Two exemptions:
-        //  (1) `forced: true` callers — e.g. HandshakeRun (M14) which must record every
+        // master kill switch for audit writes. Two exemptions:
+        //  (1) `forced: true` callers — e.g. HandshakeRun which must record every
         //      test-connection click as tamper evidence.
         //  (2) LogCleared kept here as belt-and-braces; the ClearAllAsync path writes
         //      direct to the repository today but the named-event check stays in case a
@@ -75,7 +94,7 @@ public class SsoEventService : ISsoEventService
             {
                 EventType = eventType ?? string.Empty,
                 Protocol = protocol ?? string.Empty,
-                StoreId = storeId,
+                StoreId = storeId ?? (await _storeContext.GetCurrentStoreAsync()).Id,
                 CustomerId = customerId,
                 CustomerEmail = customerEmail ?? string.Empty,
                 IdpSubject = idpSubject ?? string.Empty,
@@ -160,6 +179,10 @@ public class SsoEventService : ISsoEventService
 
         return deletedCount;
     }
+
+    /// <inheritdoc />
+    public async Task<int> PurgeOlderThanAsync(DateTime cutoffUtc)
+        => await _repository.DeleteAsync(e => e.OccurredOnUtc < cutoffUtc);
 
     #endregion
 }

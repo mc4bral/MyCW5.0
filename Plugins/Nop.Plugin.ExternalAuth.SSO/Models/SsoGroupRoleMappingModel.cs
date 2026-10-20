@@ -5,7 +5,7 @@ using Nop.Web.Framework.Mvc.ModelBinding;
 namespace Nop.Plugin.ExternalAuth.SSO.Models;
 
 /// <summary>
-/// Edit-form + grid row model for the Group → Role Mapping admin (M3).
+/// Edit-form + grid row model for the Group → Role Mapping admin.
 /// </summary>
 public record SsoGroupRoleMappingModel : BaseNopEntityModel
 {

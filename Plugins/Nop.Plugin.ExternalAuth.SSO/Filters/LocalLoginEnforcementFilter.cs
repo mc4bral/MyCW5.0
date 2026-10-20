@@ -20,7 +20,7 @@ namespace Nop.Plugin.ExternalAuth.SSO.Filters;
 /// redirects back to the login page otherwise.
 /// </summary>
 /// <remarks>
-/// See SSOPlan.v2.md §3.7. Controller/action matched by string (no <c>Nop.Web</c>
+/// See References/SSO_Plugin_Reference.md §6. Controller/action matched by string (no <c>Nop.Web</c>
 /// reference). All dependencies constructor-injected per AGENTS.md §4.
 ///
 /// The bypass cookie is intentionally preserved after a rejected attempt so the user can
@@ -31,14 +31,13 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
 {
     #region Fields
 
-    private readonly IAuthenticationService _authenticationService;
-    private readonly ICustomerService _customerService;
-    private readonly ILocalizationService _localizationService;
-    private readonly INotificationService _notificationService;
-    private readonly ISettingService _settingService;
-    private readonly ISsoEventService _eventService;
-    private readonly IStoreContext _storeContext;
-    private readonly IWorkContext _workContext;
+    protected readonly IAuthenticationService _authenticationService;
+    protected readonly ICustomerService _customerService;
+    protected readonly ILocalizationService _localizationService;
+    protected readonly INotificationService _notificationService;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly IWorkContext _workContext;
 
     #endregion
 
@@ -51,7 +50,6 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
         INotificationService notificationService,
         ISettingService settingService,
         ISsoEventService eventService,
-        IStoreContext storeContext,
         IWorkContext workContext)
     {
         _authenticationService = authenticationService;
@@ -60,7 +58,6 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
         _notificationService = notificationService;
         _settingService = settingService;
         _eventService = eventService;
-        _storeContext = storeContext;
         _workContext = workContext;
     }
 
@@ -102,7 +99,6 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
         }
 
         // Not authorised — sign out, audit, notify, redirect back to /login.
-        var store = await _storeContext.GetCurrentStoreAsync();
         var email = customer.Email ?? string.Empty;
         var customerId = customer.Id;
 
@@ -110,11 +106,9 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
 
         await _eventService.LogAsync(
             eventType: SsoAuthEventTypes.BypassDenied,
-            protocol: SsoProtocolNames.Oidc,
-            storeId: store.Id,
+            protocol: string.Empty,
             customerId: customerId,
             customerEmail: email,
-            idpSubject: string.Empty,
             notes: SsoFailureReasons.Format(SsoFailureReasons.BypassNotInRole,
                 $"Customer is not in any of the LocalLoginAllowedRoles ({systemWide.LocalLoginAllowedRoles})."));
 

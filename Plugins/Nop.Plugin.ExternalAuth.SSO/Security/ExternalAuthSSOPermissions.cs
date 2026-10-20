@@ -12,9 +12,10 @@ namespace Nop.Plugin.ExternalAuth.SSO.Security;
 public static class ExternalAuthSSOPermissions
 {
     /// <summary>
-    /// Required to use plugin-exposed features (audit log view, group→role mapping list, etc.).
+    /// Retired permission, never checked. Kept only so uninstall and update remove the record
+    /// from installs that still have it; do not use it on an action.
     /// </summary>
-    public const string ACCESS_SSO_PLUGIN = "AccessSsoPlugin";
+    public const string RETIRED_ACCESS_SSO_PLUGIN = "AccessSsoPlugin";
 
     /// <summary>
     /// Required to view or change the plugin's configuration (the Configure page and write operations).

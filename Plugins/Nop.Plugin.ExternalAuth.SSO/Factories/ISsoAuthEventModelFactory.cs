@@ -3,7 +3,7 @@ using Nop.Plugin.ExternalAuth.SSO.Models;
 namespace Nop.Plugin.ExternalAuth.SSO.Factories;
 
 /// <summary>
-/// Prepares view models for the audit-log admin page (M10).
+/// Prepares view models for the audit-log admin page.
 /// </summary>
 public interface ISsoAuthEventModelFactory
 {

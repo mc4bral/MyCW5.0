@@ -4,7 +4,7 @@ using Nop.Web.Framework.Mvc.ModelBinding;
 namespace Nop.Plugin.ExternalAuth.SSO.Models;
 
 /// <summary>
-/// One row in the SSO Accounts admin grid (M12).
+/// One row in the SSO Accounts admin grid.
 /// </summary>
 public record SsoStoreSummaryModel : BaseNopEntityModel
 {

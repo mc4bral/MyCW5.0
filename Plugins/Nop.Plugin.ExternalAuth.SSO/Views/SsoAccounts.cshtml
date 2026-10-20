@@ -4,6 +4,30 @@
     Layout = "_AdminLayout";
     ViewBag.PageTitle = T("Plugins.ExternalAuth.SSO.SsoAccounts.PageTitle").Text;
     NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.SsoAccounts");
+
+    // Grid renderers and the Test / Delete buttons live in Content/Admin/sso-admin.js; it reads
+    // the .sso-accounts-config div below.
+    NopHtml.AddScriptParts(ResourceLocation.Footer, "~/Plugins/ExternalAuth.SSO/Content/Admin/sso-admin.js");
+
+    var ssoAccountsResources = new Dictionary<string, string>
+    {
+        ["Test"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.TestButton").Text,
+        ["Edit"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.EditButton").Text,
+        ["Delete"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteButton").Text,
+        ["DeleteConfirm"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteConfirm").Text,
+        ["DeleteError"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteError").Text,
+        ["Deleted"] = "Deleted.",
+        ["CertExpired"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.Cert.ExpiredTooltip").Text,
+        ["CertNearExpiry"] = T("Plugins.ExternalAuth.SSO.SsoAccounts.Cert.NearExpiryTooltip").Text,
+        ["TestFailed"] = "Test connection request failed.",
+        ["HandshakeSkipped"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeSkipped").Text,
+        ["HandshakeTitle"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.HandshakeTitle").Text,
+        ["CheckEntityId"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.EntityId").Text,
+        ["CheckSsoUrl"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SsoUrl").Text,
+        ["CheckSloUrl"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.SloUrl").Text,
+        ["CheckCertificate"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Check.Certificate").Text,
+        ["MetadataThumbprints"] = T("Plugins.ExternalAuth.SSO.Cards.TestConnection.MetadataThumbprints").Text
+    };
 }
 
 <div class="content-header clearfix">
@@ -14,13 +38,18 @@
         <a asp-action="AddSsoAccount" class="btn btn-primary">
             <i class="fas fa-plus"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.AddNewButton")
         </a>
-        <a asp-action="Configure" class="btn btn-secondary ml-2">
+        <a asp-controller="@SsoAdminControllers.Configuration" asp-action="Configure" class="btn btn-secondary ml-2">
             <i class="fas fa-cog"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.ConfigureButton")
         </a>
     </div>
 </div>
 
 <section class="content">
+    <div class="sso-accounts-config" style="display: none;"
+         data-edit-url="@Url.Action("ConfigureStore", SsoAdminControllers.Configuration)"
+         data-test-connection-url="@Url.Action("TestConnection", SsoAdminControllers.Accounts)"
+         data-delete-url="@Url.Action("DeleteSsoAccount", SsoAdminControllers.Accounts)"
+         data-resources="@System.Text.Json.JsonSerializer.Serialize(ssoAccountsResources)"></div>
     <div class="container-fluid">
         <div class="form-horizontal">
             <div class="card card-default">
@@ -28,7 +57,7 @@
                     @await Html.PartialAsync("Table", new DataTablesModel
                     {
                         Name = "ssoaccounts-grid",
-                        UrlRead = new DataUrl("SsoAccountsList", "ExternalAuthSSO", null),
+                        UrlRead = new DataUrl("SsoAccountsList", SsoAdminControllers.Accounts, null),
                         Length = Model.PageSize,
                         LengthMenu = Model.AvailablePageSizes,
                         ColumnCollection = new List<ColumnProperty>
@@ -75,14 +104,14 @@
                                 Title = T("Plugins.ExternalAuth.SSO.SsoAccounts.Columns.CertificateNotAfter").Text,
                                 Width = "120",
                                 ClassName = NopColumnClassDefaults.CenterAll,
-                                Render = new RenderCustom("renderCertExpiry")
+                                Render = new RenderCustom("SsoAdmin.render.certExpiry")
                             },
                             new ColumnProperty(nameof(SsoStoreSummaryModel.StoreId))
                             {
                                 Title = T("Plugins.ExternalAuth.SSO.SsoAccounts.Columns.Actions").Text,
                                 Width = "180",
                                 ClassName = NopColumnClassDefaults.CenterAll,
-                                Render = new RenderCustom("renderSsoAccountActions")
+                                Render = new RenderCustom("SsoAdmin.render.accountActions")
                             }
                         }
                     })
@@ -94,150 +123,3 @@
     </div>
 </section>
 
-@*
-    Action-cell renderer + Test button handler. The "Actions" column receives StoreId as
-    its raw value; the renderer wraps it in two buttons. The Test button POSTs to
-    TestConnection and surfaces the result in a banner below the grid.
-*@
-<script>
-    function renderCertExpiry(data, type, row) {
-        if (!data || data === '—') {
-            return '<span class="text-muted">—</span>';
-        }
-        if (row.certificateExpired) {
-            return '<span class="badge badge-danger" title="@T("Plugins.ExternalAuth.SSO.SsoAccounts.Cert.ExpiredTooltip").Text">'
-                + '<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(data)
-                + '</span>';
-        }
-        if (row.certificateNearExpiry) {
-            return '<span class="badge badge-warning" title="@T("Plugins.ExternalAuth.SSO.SsoAccounts.Cert.NearExpiryTooltip").Text">'
-                + '<i class="fas fa-clock"></i> ' + escapeHtml(data)
-                + '</span>';
-        }
-        return '<span class="badge badge-success">' + escapeHtml(data) + '</span>';
-    }
-
-    function renderSsoAccountActions(data, type, row) {
-        var storeId = data;
-        var editUrl = '@Url.Action("ConfigureStore", "ExternalAuthSSO")?Id=' + storeId;
-        return ''
-            + '<button type="button" class="btn btn-info btn-sm" onclick="ssoTestConnection(' + storeId + ', this)">'
-            + '<i class="fas fa-bolt"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.TestButton").Text'
-            + '</button> '
-            + '<a class="btn btn-default btn-sm" href="' + editUrl + '">'
-            + '<i class="fas fa-edit"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.EditButton").Text'
-            + '</a> '
-            + '<button type="button" class="btn btn-danger btn-sm" onclick="ssoDeleteAccount(' + storeId + ', this)">'
-            + '<i class="fas fa-trash-alt"></i> @T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteButton").Text'
-            + '</button>';
-    }
-
-    // Delete handler — confirm() prompt, POST to DeleteSsoAccount, reload the DataTable on success.
-    function ssoDeleteAccount(storeId, btn) {
-        if (!confirm('@T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteConfirm").Text')) return;
-
-        var resultBanner = document.getElementById('ssoaccount-test-result');
-        var originalHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-        var fd = new FormData();
-        fd.append('storeId', storeId);
-        var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
-        if (tokenInput) fd.append('__RequestVerificationToken', tokenInput.value);
-
-        fetch('@Url.Action("DeleteSsoAccount", "ExternalAuthSSO")', {
-            method: 'POST',
-            body: fd,
-            credentials: 'same-origin'
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-
-            resultBanner.style.display = 'block';
-            resultBanner.className = 'alert mt-3 ' + (data.success ? 'alert-success' : 'alert-danger');
-            resultBanner.textContent = data.success
-                ? (data.message || 'Deleted.')
-                : (data.error || '@T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteError").Text');
-
-            // Reload the DataTable so the deleted store drops off the grid.
-            if (data.success && window.jQuery) {
-                jQuery('#ssoaccounts-grid').DataTable().ajax.reload(null, false);
-            }
-        })
-        .catch(function (err) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            resultBanner.style.display = 'block';
-            resultBanner.className = 'alert mt-3 alert-danger';
-            resultBanner.textContent = (err && err.message)
-                ? err.message
-                : '@T("Plugins.ExternalAuth.SSO.SsoAccounts.DeleteError").Text';
-        });
-    }
-
-    function ssoTestConnection(storeId, btn) {
-        var resultBanner = document.getElementById('ssoaccount-test-result');
-        var originalHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-
-        var fd = new FormData();
-        fd.append('storeId', storeId);
-        var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
-        if (tokenInput) fd.append('__RequestVerificationToken', tokenInput.value);
-
-        fetch('@Url.Action("TestConnection", "ExternalAuthSSO")', {
-            method: 'POST',
-            body: fd,
-            credentials: 'same-origin'
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-
-            resultBanner.style.display = 'block';
-            resultBanner.className = 'alert mt-3 ' + (data.success ? 'alert-success' : 'alert-danger');
-            var html = '<strong>' + (data.success ? '✓' : '✗') + '</strong> ' + escapeHtml(data.message || '');
-            if (data.details) {
-                html += '<pre class="mt-2 mb-2" style="white-space:pre-wrap;">' + escapeHtml(data.details) + '</pre>';
-            }
-            // M14 — handshake panel (same shape as Configure).
-            var h = data.handshake;
-            if (h && !h.skippedReason) {
-                html += '<ul class="list-unstyled mb-0 mt-2">';
-                html += renderHandshakeRow(h.entityIdMatches, 'EntityID match');
-                html += renderHandshakeRow(h.ssoUrlMatches, 'SSO URL match');
-                html += renderHandshakeRow(h.sloUrlMatches, 'SLO URL match');
-                html += renderHandshakeRow(h.certificateMatches, 'Certificate thumbprint match');
-                html += '</ul>';
-            } else if (h && h.skippedReason) {
-                html += '<div class="small text-muted mt-1"><em>Handshake skipped: ' + escapeHtml(h.skippedReason) + '</em></div>';
-            }
-            resultBanner.innerHTML = html;
-        })
-        .catch(function (err) {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            resultBanner.style.display = 'block';
-            resultBanner.className = 'alert mt-3 alert-danger';
-            resultBanner.textContent = err && err.message ? err.message : 'Test connection request failed.';
-        });
-    }
-
-    function renderHandshakeRow(passed, label) {
-        var icon = passed
-            ? '<i class="fas fa-check-circle text-success"></i>'
-            : '<i class="fas fa-times-circle text-danger"></i>';
-        return '<li>' + icon + ' ' + label + '</li>';
-    }
-
-    function escapeHtml(s) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-</script>

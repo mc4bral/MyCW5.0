@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Models;
+using Nop.Plugin.ExternalAuth.SSO.Services.Http;
 using Nop.Plugin.ExternalAuth.SSO.Services.Saml;
 using Nop.Plugin.ExternalAuth.SSO.Settings;
 using Nop.Services.Configuration;
@@ -22,11 +23,11 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
     #region Fields
 
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IIdpMetadataImporter _metadataImporter;
-    private readonly ISettingService _settingService;
-    private readonly ISsoEventService _eventService;
-    private readonly ISsoSecretsService _secretsService;
+    protected readonly IHttpClientFactory _httpClientFactory;
+    protected readonly IIdpMetadataImporter _metadataImporter;
+    protected readonly ISettingService _settingService;
+    protected readonly ISsoEventService _eventService;
+    protected readonly ISsoSecretsService _secretsService;
 
     #endregion
 
@@ -62,7 +63,7 @@ public class SsoTestConnectionService : ISsoTestConnectionService
             _ => Fail("SSO protocol is set to Off — nothing to test.")
         };
 
-        // M14 — write a forced HandshakeRun audit row on every click. Forced=true so the
+        // write a forced HandshakeRun audit row on every click. Forced=true so the
         // breadcrumb survives even when EnableAuditLogging is off; the row is the
         // tamper-evidence trail of who tested SSO and when.
         await _eventService.LogAsync(
@@ -108,6 +109,9 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
         var discoveryUrl = settings.Authority.TrimEnd('/') + "/.well-known/openid-configuration";
 
+        if (!SafeUrl.TryValidate(discoveryUrl, "OIDC discovery URL", out var unsafeReason))
+            return Fail(unsafeReason);
+
         try
         {
             using var client = _httpClientFactory.CreateClient(HttpClientName);
@@ -150,6 +154,9 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
         // 2. Legacy URL reachability probe — kept so admins still get HEAD-level signal
         //    even when IdpMetadataUrl is empty.
+        if (!SafeUrl.TryValidate(settings.IdpSsoUrl, "IdP SSO URL", out var unsafeReason))
+            return Fail(unsafeReason);
+
         try
         {
             using var client = _httpClientFactory.CreateClient(HttpClientName);
@@ -169,7 +176,7 @@ public class SsoTestConnectionService : ISsoTestConnectionService
             return Fail($"IdP SSO URL probe failed: {ex.Message}");
         }
 
-        // 3. M14 — real metadata handshake. Optional: skipped cleanly when
+        // 3. real metadata handshake. Optional: skipped cleanly when
         //    IdpMetadataUrl is empty so admins without published metadata still get the
         //    legacy reachability + cert checks above.
         var handshake = await RunHandshakeAsync(settings);
@@ -241,7 +248,7 @@ public class SsoTestConnectionService : ISsoTestConnectionService
             && string.Equals(md.EntityId, settings.IdpEntityId, StringComparison.Ordinal);
 
         // 2. SSO URL — scoped to the configured login binding, fall back to any binding.
-        var loginBindingUrn = MapBindingToUrn(settings.LoginBinding);
+        var loginBindingUrn = settings.LoginBinding.ToUrn();
         handshake.SsoUrlMatches = AnyEndpointMatches(md.SsoEndpoints, loginBindingUrn, settings.IdpSsoUrl);
 
         // 3. SLO URL — optional. Absent stored SLO URL = pass (SAML 2.0 allows IdPs to
@@ -252,28 +259,23 @@ public class SsoTestConnectionService : ISsoTestConnectionService
         }
         else
         {
-            var logoutBindingUrn = MapBindingToUrn(settings.LogoutBinding);
+            var logoutBindingUrn = settings.LogoutBinding.ToUrn();
             handshake.SloUrlMatches = AnyEndpointMatches(md.SloEndpoints, logoutBindingUrn, settings.IdpSloUrl);
         }
 
         // 4. Cert thumbprint — the load-bearing handshake signal.
-        try
+        if (SsoCertificates.TryLoadIdpCertificate(_secretsService, settings, out var storedCert, out var storedCertError))
         {
-            var storedCert = ParseStoredIdpCertificate(settings);
-            if (storedCert is null)
+            using (storedCert)
             {
-                handshake.Detail = "Stored IdP certificate could not be parsed for comparison.";
-            }
-            else
-            {
-                var storedThumbprint = IdpMetadataImporter.ComputeSha256Thumbprint(storedCert);
+                var storedThumbprint = SsoCertificates.Sha256Thumbprint(storedCert!);
                 handshake.CertificateMatches = md.SigningCerts.Any(c =>
                     string.Equals(c.Sha256Thumbprint, storedThumbprint, StringComparison.OrdinalIgnoreCase));
             }
         }
-        catch (Exception ex)
+        else
         {
-            handshake.Detail = $"Stored IdP certificate could not be loaded for comparison: {ex.Message}";
+            handshake.Detail = $"Stored IdP certificate could not be loaded for comparison: {storedCertError}";
         }
 
         // 5. Metadata signature — informational; never gates the overall result. A
@@ -295,16 +297,6 @@ public class SsoTestConnectionService : ISsoTestConnectionService
         return handshake;
     }
 
-    private static string MapBindingToUrn(string? shortBinding)
-    {
-        // Settings store "HTTP-Redirect" / "HTTP-POST" as the short form; legacy
-        // BindingsRedirects card uses these strings. Default is HTTP-Redirect.
-        if (!string.IsNullOrWhiteSpace(shortBinding)
-            && shortBinding.Contains("POST", StringComparison.OrdinalIgnoreCase))
-            return SamlMetadataBindings.HttpPost;
-        return SamlMetadataBindings.HttpRedirect;
-    }
-
     /// <summary>
     /// Prefer endpoints with the configured binding, fall back to any endpoint with a
     /// matching <c>Location</c>. SAML 2.0 lets an IdP advertise the same URL under
@@ -324,34 +316,6 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
         return candidates.Any(e => string.Equals(
             e.Location?.Trim(), storedLocation.Trim(), StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// Load the stored encrypted IdP cert and return it ready for SHA-256 thumbprint
-    /// comparison. Returns <c>null</c> when nothing is stored or decryption fails.
-    /// </summary>
-    private X509Certificate2? ParseStoredIdpCertificate(SsoConfigurationSettings settings)
-    {
-        if (string.IsNullOrWhiteSpace(settings.IdpCertificateBase64))
-            return null;
-        if (!_secretsService.TryUnprotect(settings.IdpCertificateBase64, out var plaintext)
-            || string.IsNullOrWhiteSpace(plaintext))
-            return null;
-
-        var stripped = new string(plaintext
-            .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
-            .Replace("-----END CERTIFICATE-----", string.Empty)
-            .Where(c => !char.IsWhiteSpace(c))
-            .ToArray());
-
-        try
-        {
-            return X509CertificateLoader.LoadCertificate(Convert.FromBase64String(stripped));
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private static string BuildHandshakeDetail(HandshakeResult h, int metadataCertCount)
@@ -387,36 +351,18 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
     private TestConnectionResult ValidateIdpCertificate(SsoConfigurationSettings settings)
     {
-        if (string.IsNullOrWhiteSpace(settings.IdpCertificateBase64))
-            return Fail("IdP signing certificate is not configured.");
+        if (!SsoCertificates.TryLoadIdpCertificate(_secretsService, settings, out var cert, out var error))
+            return Fail(error);
 
-        if (!_secretsService.TryUnprotect(settings.IdpCertificateBase64, out var plaintext)
-            || string.IsNullOrWhiteSpace(plaintext))
-            return Fail("IdP signing certificate could not be decrypted.");
-
-        try
+        using (cert)
         {
-            var stripped = new string(plaintext
-                .Replace("-----BEGIN CERTIFICATE-----", string.Empty)
-                .Replace("-----END CERTIFICATE-----", string.Empty)
-                .Where(c => !char.IsWhiteSpace(c))
-                .ToArray());
-
-            var bytes = Convert.FromBase64String(stripped);
-            var cert = X509CertificateLoader.LoadCertificate(bytes);
-
-            var now = DateTime.UtcNow;
-            var notAfter = cert.NotAfter.ToUniversalTime();
-            if (notAfter < now)
+            var notAfter = cert!.NotAfter.ToUniversalTime();
+            if (notAfter < DateTime.UtcNow)
                 return Fail($"IdP signing certificate expired on {notAfter:yyyy-MM-dd}.");
 
             return Ok(
                 "Certificate parsed.",
                 $"Subject: {cert.Subject}\nIssuer: {cert.Issuer}\nNotAfter: {notAfter:yyyy-MM-dd} UTC");
-        }
-        catch (Exception ex)
-        {
-            return Fail($"IdP signing certificate is not a valid X.509 (Base64 DER): {ex.Message}");
         }
     }
 

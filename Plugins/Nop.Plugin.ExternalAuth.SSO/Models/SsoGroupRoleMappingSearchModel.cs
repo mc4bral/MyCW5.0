@@ -5,7 +5,7 @@ using Nop.Web.Framework.Mvc.ModelBinding;
 namespace Nop.Plugin.ExternalAuth.SSO.Models;
 
 /// <summary>
-/// Filter form + DataTables search arguments for the Group → Role Mapping admin (M3).
+/// Filter form + DataTables search arguments for the Group → Role Mapping admin.
 /// </summary>
 public record SsoGroupRoleMappingSearchModel : BaseSearchModel
 {
