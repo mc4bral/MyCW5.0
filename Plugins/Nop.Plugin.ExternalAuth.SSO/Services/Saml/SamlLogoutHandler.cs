@@ -116,6 +116,22 @@ public class SamlLogoutHandler : ISamlLogoutHandler
             new Saml2RedirectBinding().Unbind(request.ToGenericHttpRequest(), message);
     }
 
+    /// <summary>
+    /// The same for a SAML response (a <c>LogoutResponse</c>). ITfoxtec's bindings have a separate
+    /// <c>Unbind</c> for responses that reads <c>SAMLResponse</c>; overloads are chosen by the declared
+    /// type, and ITfoxtec's Saml2LogoutResponse derives from Saml2Request (which derives from
+    /// Saml2Response), so the request overload is the closer match. Called through the request helper,
+    /// a response always reached it and failed with "Query String does not contain SAMLRequest"
+    /// (found against Keycloak, 2026-10-21) — hence a separately named helper.
+    /// </summary>
+    private static void UnbindResponseEither(HttpRequest request, Saml2Response message)
+    {
+        if (request.HasFormContentType)
+            new Saml2PostBinding().Unbind(request.ToGenericHttpRequest(), message);
+        else
+            new Saml2RedirectBinding().Unbind(request.ToGenericHttpRequest(), message);
+    }
+
     #endregion
 
     #region Methods
@@ -158,7 +174,8 @@ public class SamlLogoutHandler : ISamlLogoutHandler
 
         var binding = new Saml2RedirectBinding();
         binding.Bind(logoutRequest);
-        return binding.ToActionResult();
+        // Not ToActionResult(): nop's redirect executor would URL-decode the SAMLRequest (see SamlRedirectResult).
+        return new SamlRedirectResult(binding.RedirectLocation);
     }
 
     /// <inheritdoc />
@@ -215,7 +232,7 @@ public class SamlLogoutHandler : ISamlLogoutHandler
 
         try
         {
-            UnbindEither(request, logoutResponse);
+            UnbindResponseEither(request, logoutResponse);
         }
         catch (Exception ex)
         {

@@ -54,3 +54,4 @@ Plugins/Nop.Plugin.ExternalAuth.SSO/SAMLSSOConfig_StoreID_110.json
 
 # Old MiniOrange SAML plugin (third-party, commercial, unused) — kept local only
 Plugins/Nop.Plugin.ExternalAuth.SSO/miniorange.saml/
+/Nop.Plugin.Auth.SSO.zip

@@ -79,6 +79,17 @@ public class Saml2ConfigurationFactory : ISaml2ConfigurationFactory
 
         config.SignatureValidationCertificates.Add(idpCertificate!);
 
+        // Trust is the pinned certificate above: ITfoxtec verifies a signature only against
+        // SignatureValidationCertificates, never against a certificate the message carries. IdP
+        // signing certificates are self-signed (Entra, Keycloak, ADFS), so the default ChainTrust
+        // refused every response ("terminated in a root certificate which is not trusted" — found
+        // against Keycloak, review item C1) and online revocation checks have nothing to check.
+        // With None the library does not check expiry either: an expired pinned certificate is
+        // still accepted, as is usual for pinned SAML certificates. System → Warnings reports it
+        // before and after it expires (§7.4 of the reference).
+        config.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
+        config.RevocationMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.NoCheck;
+
         // Whether this configuration signs what it binds. ITfoxtec signs any message whose
         // configuration carries a SigningCertificate, so the certificate is attached only for
         // the purpose whose flag is on — logout signing is independent of AuthnRequest signing.

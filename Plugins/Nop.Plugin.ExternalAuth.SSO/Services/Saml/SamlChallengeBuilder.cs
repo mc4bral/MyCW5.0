@@ -104,7 +104,11 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
                 AllowCreate = true,
                 Format = NameIdentifierFormats.Persistent.OriginalString
             },
-            AssertionConsumerServiceUrl = new Uri(acsUrl)
+            AssertionConsumerServiceUrl = new Uri(acsUrl),
+            // The ACS accepts POST only, as the SAML web SSO profile requires for responses. Say so:
+            // an IdP that is not told may answer with the binding the request came on (Keycloak
+            // sends the response in the URL), which the ACS then refuses.
+            ProtocolBinding = ProtocolBindings.HttpPost
         };
 
         var requestId = authnRequest.Id?.Value ?? Guid.NewGuid().ToString();
@@ -137,7 +141,8 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
 
         var redirectBinding = new Saml2RedirectBinding();
         redirectBinding.Bind(authnRequest);
-        return redirectBinding.ToActionResult();
+        // Not ToActionResult(): nop's redirect executor would URL-decode the SAMLRequest (see SamlRedirectResult).
+        return new SamlRedirectResult(redirectBinding.RedirectLocation);
     }
 
     #endregion

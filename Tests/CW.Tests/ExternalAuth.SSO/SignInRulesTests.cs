@@ -70,6 +70,20 @@ public class SignInRulesTests
 
     #endregion
 
+    #region Claim types as .NET's OIDC handler renames them
+
+    [TestCase("roles", "roles", true, TestName = "Configured name matches as is")]
+    [TestCase("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "roles", true, TestName = "roles also matches the renamed role claim (OIDC)")]
+    [TestCase("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "role", true)]
+    [TestCase("groups", "groups", true, TestName = "groups is not renamed and still matches")]
+    [TestCase("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", "groups", false, TestName = "groups does not pick up role claims")]
+    [TestCase("roles", "", false, TestName = "An empty setting matches nothing")]
+    [TestCase("roles", null, false)]
+    public void Configured_claim_type(string claimType, string? configured, bool expected)
+        => SsoUserProvisioningService.IsConfiguredClaimType(claimType, configured).Should().Be(expected);
+
+    #endregion
+
     #region Role changes
 
     [Test]

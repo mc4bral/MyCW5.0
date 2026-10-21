@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Nop.Core;
 using Nop.Core.Domain.Customers;
 using Nop.Core.Http;
@@ -20,6 +22,8 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
 {
     #region Fields
 
+    protected readonly CustomerSettings _customerSettings;
+    protected readonly ICustomerRegistrationService _customerRegistrationService;
     protected readonly ICustomerService _customerService;
     protected readonly IExternalAuthenticationService _externalAuthenticationService;
     protected readonly IGenericAttributeService _genericAttributeService;
@@ -35,6 +39,8 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
     #region Ctor
 
     public SsoUserProvisioningService(
+        CustomerSettings customerSettings,
+        ICustomerRegistrationService customerRegistrationService,
         ICustomerService customerService,
         IExternalAuthenticationService externalAuthenticationService,
         IGenericAttributeService genericAttributeService,
@@ -45,6 +51,8 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
         IWebHelper webHelper,
         IWorkContext workContext)
     {
+        _customerSettings = customerSettings;
+        _customerRegistrationService = customerRegistrationService;
         _customerService = customerService;
         _externalAuthenticationService = externalAuthenticationService;
         _genericAttributeService = genericAttributeService;
@@ -72,6 +80,25 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
             value = principal.FindFirstValue(fallbackType);
 
         return value ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="claimType"/> is the configured claim type, either as configured or
+    /// as .NET's OIDC handler renames it on the way in. The handler maps short JWT names to long
+    /// URIs (<c>roles</c> and <c>role</c> become <see cref="ClaimTypes.Role"/>, <c>email</c> becomes
+    /// <see cref="ClaimTypes.Email"/>), so a setting of <c>roles</c> must also accept the long form —
+    /// otherwise app roles from Entra or Keycloak are never seen over OIDC.
+    /// </summary>
+    internal static bool IsConfiguredClaimType(string claimType, string? configuredType)
+    {
+        if (string.IsNullOrWhiteSpace(configuredType))
+            return false;
+
+        if (string.Equals(claimType, configuredType, StringComparison.Ordinal))
+            return true;
+
+        return JsonWebTokenHandler.DefaultInboundClaimTypeMap.TryGetValue(configuredType, out var mapped)
+            && string.Equals(claimType, mapped, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -285,8 +312,8 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
             subject = email;
 
         // Values the group → role mappings match: group ids and app roles alike.
-        var groups = principal.FindAll(c => c.Type == settings.GroupsClaimType
-                                            || !string.IsNullOrEmpty(settings.RolesClaimType) && c.Type == settings.RolesClaimType)
+        var groups = principal.FindAll(c => IsConfiguredClaimType(c.Type, settings.GroupsClaimType)
+                                            || IsConfiguredClaimType(c.Type, settings.RolesClaimType))
             .Select(c => c.Value)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -340,6 +367,18 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
         {
             await _externalAuthenticationService.AssociateExternalAccountWithUserAsync(existingCustomer, parameters);
             linkedNow = true;
+        }
+
+        // 6b. nop checks on every request whether a signed-in customer changed their password,
+        //     and assumes every registered customer has a password record — one without (created
+        //     by an admin with no password, or imported) throws on the next page after sign-in.
+        //     Give such a customer a random password nobody knows, as nop does when it registers
+        //     a customer through external authentication.
+        if (existingCustomer is not null && await _customerService.GetCurrentPasswordAsync(existingCustomer.Id) is null)
+        {
+            var randomPassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            await _customerRegistrationService.ChangePasswordAsync(
+                new ChangePasswordRequest(existingCustomer.Email, false, _customerSettings.DefaultPasswordFormat, randomPassword));
         }
 
         // 7. nop signs in (or registers), migrates the cart, publishes its events and returns
