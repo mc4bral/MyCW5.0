@@ -1,7 +1,10 @@
 using FluentValidation;
 using Nop.Plugin.ExternalAuth.SSO.Models;
+using Nop.Plugin.ExternalAuth.SSO.Services;
 using Nop.Plugin.ExternalAuth.SSO.Settings;
+using Nop.Services.Configuration;
 using Nop.Services.Localization;
+using Nop.Services.Stores;
 using Nop.Web.Framework.Validators;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Validators;
@@ -20,8 +23,42 @@ namespace Nop.Plugin.ExternalAuth.SSO.Validators;
 /// </remarks>
 public class ConfigurationModelValidator : BaseNopValidator<ConfigurationModel>
 {
-    public ConfigurationModelValidator(ILocalizationService localizationService)
+    public ConfigurationModelValidator(
+        ILocalizationService localizationService,
+        ISettingService settingService,
+        IStoreService storeService)
     {
+        // D10 — never save a state that locks every admin out of a store's own login: "Redirect
+        // login to SSO" on with no bypass token (the bypass link is then off, and SSO refuses admin
+        // accounts). Checked from both sides of the form:
+        // 1. A store-scope save turning the redirect on while no token is stored. (The system-wide
+        //    card is not on that page, so the token comes from the stored settings.)
+        RuleFor(m => m.RedirectLoginToSso)
+            .MustAsync(async (m, _, _) =>
+            {
+                var systemWide = await settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
+                return !SsoMonitoringService.LocksAdminsOut(m.IsEnabled, m.Protocol, m.RedirectLoginToSso,
+                    hasBypassToken: !string.IsNullOrEmpty(systemWide.SsoBypassToken));
+            })
+            .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.RedirectLoginToSso.NeedsBypassToken"))
+            .When(m => m.RedirectLoginToSso && m.IsEnabled && m.Protocol != SsoProtocol.Off);
+
+        // 2. An "All stores" save clearing the token while a store redirects login to SSO.
+        RuleFor(m => m.ClearSsoBypassToken)
+            .MustAsync(async (_, _) =>
+            {
+                foreach (var store in await storeService.GetAllStoresAsync())
+                {
+                    var s = await settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
+                    if (SsoMonitoringService.LocksAdminsOut(s.IsEnabled, s.Protocol, s.RedirectLoginToSso, hasBypassToken: false))
+                        return false;
+                }
+
+                return true;
+            })
+            .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.SsoBypassToken.NeededForRedirect"))
+            .When(m => m.ClearSsoBypassToken);
+
         // BaseUrl is required when the plugin is enabled (the SAML SP endpoints and OIDC
         // callback are constructed off it).
         RuleFor(m => m.AuditRetentionDays)

@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Nop.Plugin.ExternalAuth.SSO.Models;
 using Nop.Plugin.ExternalAuth.SSO.Services;
+using Nop.Plugin.ExternalAuth.SSO.Settings;
 using NUnit.Framework;
 using static Nop.Plugin.ExternalAuth.SSO.Services.SsoMonitoringService;
 
@@ -40,6 +41,19 @@ public class MonitoringTests
     [Test]
     public void One_day_inside_the_window_is_reported()
         => GetExpiryState(Now.AddDays(29).AddHours(23), Now, 30).state.Should().Be(ExpiryState.Expiring);
+
+    #endregion
+
+    #region Admin lockout (D10)
+
+    [TestCase(true, SsoProtocol.OpenIdConnect, true, false, true, TestName = "Redirect on, no bypass token: locked out")]
+    [TestCase(true, SsoProtocol.Saml2, true, false, true)]
+    [TestCase(true, SsoProtocol.OpenIdConnect, true, true, false, TestName = "A bypass token keeps the way in")]
+    [TestCase(true, SsoProtocol.OpenIdConnect, false, false, false, TestName = "Redirect off: nop's form stays")]
+    [TestCase(false, SsoProtocol.OpenIdConnect, true, false, false, TestName = "SSO disabled: no redirect")]
+    [TestCase(true, SsoProtocol.Off, true, false, false, TestName = "Protocol off: no redirect")]
+    public void Admin_lockout(bool enabled, SsoProtocol protocol, bool redirect, bool hasToken, bool expected)
+        => LocksAdminsOut(enabled, protocol, redirect, hasToken).Should().Be(expected);
 
     #endregion
 

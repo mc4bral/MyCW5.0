@@ -8,6 +8,7 @@ using Nop.Core;
 using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Services;
 using Nop.Plugin.ExternalAuth.SSO.Settings;
+using Nop.Services.Authentication.External;
 using Nop.Services.Configuration;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Filters;
@@ -26,25 +27,31 @@ public class LoginActionsFilter : IAsyncActionFilter
 {
     #region Fields
 
+    protected readonly IAuthenticationPluginManager _authenticationPluginManager;
     protected readonly ISettingService _settingService;
     protected readonly ISsoSecretsService _secretsService;
     protected readonly IStoreContext _storeContext;
     protected readonly IUrlHelperFactory _urlHelperFactory;
+    protected readonly IWorkContext _workContext;
 
     #endregion
 
     #region Ctor
 
     public LoginActionsFilter(
+        IAuthenticationPluginManager authenticationPluginManager,
         ISettingService settingService,
         ISsoSecretsService secretsService,
         IStoreContext storeContext,
-        IUrlHelperFactory urlHelperFactory)
+        IUrlHelperFactory urlHelperFactory,
+        IWorkContext workContext)
     {
+        _authenticationPluginManager = authenticationPluginManager;
         _settingService = settingService;
         _secretsService = secretsService;
         _storeContext = storeContext;
         _urlHelperFactory = urlHelperFactory;
+        _workContext = workContext;
     }
 
     #endregion
@@ -136,6 +143,16 @@ public class LoginActionsFilter : IAsyncActionFilter
         // SSO is still available via the public "Sign in with Microsoft" button on the
         // login page, but /login itself stays on the standard local form.
         if (!perStore.IsEnabled || perStore.Protocol == SsoProtocol.Off || !perStore.RedirectLoginToSso)
+        {
+            await next();
+            return;
+        }
+
+        // The plugin switched off in nop's external sign-in methods (or not allowed for this
+        // customer / store): the challenge would refuse and send the browser back to /login, which
+        // would redirect again — an endless loop and no login page. Show the local form instead.
+        if (!await _authenticationPluginManager.IsPluginActiveAsync(
+                SSOAuthenticationDefaults.SystemName, await _workContext.GetCurrentCustomerAsync(), store.Id))
         {
             await next();
             return;

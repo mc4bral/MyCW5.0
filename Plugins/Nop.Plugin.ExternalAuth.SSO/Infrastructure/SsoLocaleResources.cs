@@ -211,6 +211,9 @@ public static class SsoLocaleResources
         ["Plugins.ExternalAuth.SSO.Warnings.ClientSecretExpired"] = "SSO, store {0}: the OIDC client secret expired on {1}. Sign-in fails until a new secret is created at the IdP and saved on the SSO Configure page.",
         ["Plugins.ExternalAuth.SSO.Warnings.ClientSecretExpiring"] = "SSO, store {0}: the OIDC client secret expires on {1} (in {2} days). Create a new secret at the IdP, save it on the SSO Configure page and update its expiry date.",
         ["Plugins.ExternalAuth.SSO.Warnings.MetadataDiffers"] = "SSO, store {0}: the IdP's published metadata differs from the stored settings — {1} (checked {2}). Apply it with Import IdP metadata on the SSO Configure page, or turn on automatic apply.",
+        ["Plugins.ExternalAuth.SSO.Warnings.AdminLockout"] = "SSO, store {0}: \"Redirect login to SSO\" is on but no bypass token is set, so no administrator can reach this store's own login (SSO never signs in an admin account). Set a bypass token under SSO → Configure (All stores), or turn the redirect off for the store, before the current admin sessions end.",
+        ["Plugins.ExternalAuth.SSO.Fields.RedirectLoginToSso.NeedsBypassToken"] = "Set a bypass token first (SSO → Configure, scope All stores). With the redirect on and no bypass token, no administrator could reach this store's login page.",
+        ["Plugins.ExternalAuth.SSO.Fields.SsoBypassToken.NeededForRedirect"] = "The bypass token can't be cleared while a store has \"Redirect login to SSO\" on — no administrator could reach that store's login page. Turn the redirect off on those stores first.",
         ["Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl"] = "SP Metadata URL",
         ["Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl.Hint"] = "Standard SAML 2.0 SP metadata XML. Most IdPs let you import it instead of typing the values above by hand.",
 

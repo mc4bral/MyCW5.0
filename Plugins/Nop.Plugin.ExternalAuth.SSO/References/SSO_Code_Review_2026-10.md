@@ -4,7 +4,7 @@
 |---|---|
 | **Scope** | `Nop.Plugin.ExternalAuth.SSO` as it stands on 2026-10-19, after the 5.00 port and the G1–G14 fixes |
 | **Method** | Read every service, filter, controller and view; compared with nopCommerce 5.00's own code and its `ExternalAuth.Facebook` plugin; checked library APIs in the restored NuGet packages; smoke-tested the running site |
-| **Status** | Findings. **D1–D6, R1–R9 and features F1–F5 done 2026-10-19** (approved); P3, the larger items and the planned-but-never-built items done 2026-10-20, with D7 |
+| **Status** | Findings. **D1–D6, R1–R9 and features F1–F5 done 2026-10-19** (approved); P3, the larger items and the planned-but-never-built items done 2026-10-20, with D7. **First real-IdP test (Keycloak) 2026-10-21:** C1 and C2 settled, D8–D14 found and fixed (D10 on 2026-10-21, plugin `…_DATA_0.10`) |
 
 **"SSL" in the request is read as SSO** (sign-on libraries). TLS itself is handled by Kestrel / IIS and needs no
 library; certificate handling already uses .NET 9+'s `X509CertificateLoader`, which is the current API.
@@ -21,8 +21,8 @@ first test.
 
 | Priority | Count | What |
 |---|---|---|
-| **P0 — defect** | 7 | broken view on multi-store sites; audit regression from G13; Entra group overage revokes roles; Configure save blocked (D4); store-0 audit rows rejected (D5); a store-scope save blanked the system-wide settings (D6); saving Configure needed the secret re-entered (D7) |
-| **P1 — confirm on first IdP test** | 2 | SAML certificate chain validation; OIDC claim mapping |
+| **P0 — defect** | 14 | broken view on multi-store sites; audit regression from G13; Entra group overage revokes roles; Configure save blocked (D4); store-0 audit rows rejected (D5); a store-scope save blanked the system-wide settings (D6); saving Configure needed the secret re-entered (D7); **from the real-IdP test (§2.1):** crash for customers without a password (D8), app roles ignored over OIDC (D9), admin lockout (D10), SAML request corrupted by nop's redirect (D11), response binding not requested (D12), self-signed IdP certificates refused (D13), SAML log-out response unreadable (D14) |
+| **P1 — confirm on first IdP test** | 2 | SAML certificate chain validation; OIDC claim mapping — **both settled 2026-10-21** |
 | **P2 — design / reuse** | 9 | metadata parser, certificate helper, audit API, controller split, scripts, … |
 | **P3 — style** | 7 | field modifiers, naming, constants, … |
 
@@ -104,6 +104,65 @@ off), `AuditRetentionDays` 0 (keep forever). Present before this review.
 at "All stores". Verified: the values restored at "All stores" (Administrators / 60 / on / 365) were unchanged by a
 following store-1 save.
 
+### 2.1 Defects found by the first real-IdP test (Keycloak 26, 2026-10-21)
+
+Keycloak ran in a GitHub Codespace with a test realm (two users, two groups, one app role, an OIDC and a SAML client);
+nop ran locally. Results and the test log are in the reference (§12). None of these could show with the DEBUG mock IdP,
+which hands provisioning a ready-made principal; D9, D11 and D13 would have broken sign-in with Microsoft Entra too.
+
+#### D8. Existing customer without a password: nop throws after an SSO sign-in — FIXED
+nop's `CookieAuthenticationService.GetAuthenticatedCustomerAsync` compares the customer's latest password date with the
+cookie on every request and assumes every registered customer has a password record. A customer created by an admin
+without a password (or imported) has none: the sign-in succeeded, the next page threw `NullReferenceException`.
+nop-registered SSO customers were unaffected (nop gives them a random password). **Fix (plugin, step 6b of
+provisioning):** before signing in an existing customer with no password record, set a random 32-byte password through
+`ICustomerRegistrationService.ChangePasswordAsync`. Verified with a password-less test customer.
+
+#### D9. App roles ignored over OIDC — FIXED
+.NET's OIDC handler renames inbound JWT claims (`JsonWebTokenHandler.DefaultInboundClaimTypeMap`): `roles` and `role`
+become `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`; `groups` is not renamed. Provisioning matched
+the configured `RolesClaimType` (`roles`) exactly, so F2 never saw an app role over OIDC — Entra included. **Fix:**
+`IsConfiguredClaimType` also accepts the renamed form. Verified: a user with app role `Store.Manager` got its mapped
+role; 7 unit tests.
+
+#### D10. "Redirect login to SSO" with no bypass token locks admins out — FIXED 2026-10-21 (plugin `…_DATA_0.10`)
+With `RedirectLoginToSso` on, `/login` always goes to the IdP; the way past it is `?ssobypass=<token>`, and an empty
+token turns the bypass off; admin accounts are refused by SSO by design. So no admin can reach the store's own login,
+and the setting can only be undone in the database. Likely in practice: the redirect is on by default and the token
+starts empty. **Fix:** one rule, `SsoMonitoringService.LocksAdminsOut`, used in three places —
+1. Configure refuses a store save that turns the redirect on while no token is stored;
+2. Configure refuses an "All stores" save that clears the token while any store redirects;
+3. System → Warnings reports a store already in that state as a **failure**.
+
+Found with it, same family: **a redirect loop** when the plugin is switched off in nop's external sign-in methods but
+a store still redirects — the challenge refuses and returns to `/login`, which redirected again. `LoginActionsFilter`
+now redirects only while the plugin is active for the store and customer. Verified: both refusals, the bypass link
+(`/login` → SSO, `/login?ssobypass=…` → nop's form), the warning on a simulated lockout, and `/login` → 200 with the
+plugin off; 6 unit tests.
+
+#### D11. Every SAML request corrupted by nop's redirect handling — FIXED
+nop replaces ASP.NET's `RedirectResult` executor (`NopRedirectResultExecutor`); with
+`SecuritySettings.AllowNonAsciiCharactersInHeaders` on it `WebUtility.UrlDecode`s the whole address. ITfoxtec's
+correctly escaped `SAMLRequest` came out with raw `+` `/` `=`; the IdP read `+` as a space and refused the request
+(Keycloak: `invalid_token`, no client). OIDC was not affected (its handler redirects by itself). **Fix:**
+`Services/Saml/SamlRedirectResult` sets the `Location` header directly; used for the AuthnRequest and the SP-initiated
+LogoutRequest. Proven by decoding the request and replaying it re-encoded.
+
+#### D12. SAML response binding not requested — FIXED
+The AuthnRequest named no `ProtocolBinding`; Keycloak answered on the binding the request came by and put the
+`SAMLResponse` in the URL, which the POST-only ACS refused (404). **Fix:** `ProtocolBinding = HTTP-POST` on the
+AuthnRequest. (Entra always posts; the SAML web SSO profile requires POST or Artifact for responses.)
+
+#### D13. Self-signed IdP signing certificates refused — FIXED (settles C1)
+See C1 below. `Invalid X509 certificate chain … terminated in a root certificate which is not trusted`.
+
+#### D14. SAML log-out response unreadable — FIXED
+`UnbindEither(HttpRequest, Saml2Request)` was called with a `Saml2LogoutResponse`. In ITfoxtec that type derives from
+`Saml2Request` (which derives from `Saml2Response`), so overload resolution always chose the *request* `Unbind`, which
+looks for `SAMLRequest` — "HTTP Query String does not contain SAMLRequest". The IdP session still ended, but the
+answer was never validated. **Fix:** a separately named `UnbindResponseEither(HttpRequest, Saml2Response)`. Verified:
+`Slo` with no `Failed` after it.
+
 ---
 
 ## 3. P1 — confirm on the first real IdP test
@@ -118,6 +177,12 @@ certificate fails, and online revocation checks add latency or fail behind a pro
 **Do:** if the first Entra SAML login fails signature validation, set both explicitly in the factory (one place) and
 document why.
 
+> **Settled 2026-10-21 (D13).** Keycloak's self-signed certificate was refused exactly as predicted. The factory now
+> sets `CertificateValidationMode = None` and `RevocationMode = NoCheck`, with the reason in a comment. ITfoxtec checks
+> a signature only against `SignatureValidationCertificates`, so the pinned certificate is the trust. With `None` the
+> library also skips expiry: an expired pinned certificate is still accepted (usual for SAML pinning); System → Warnings
+> reports it (reference §7.4).
+
 ### C2. OIDC claim mapping
 
 The handler maps inbound claims by default (`sub` → `ClaimTypes.NameIdentifier`, etc.), and provisioning reads the
@@ -125,6 +190,10 @@ mapped names. That works, but it is implicit. Current ASP.NET Core guidance is `
 the raw JWT names (`sub`, `email`, `given_name`, `groups`, `roles`). **Do:** decide once — either keep mapping and
 say so in the registrar, or turn it off and change the default claim types in `SsoConfigurationSettings`. Changing it
 alters every store's claim-type defaults, so do it before go-live, not after.
+
+> **Settled 2026-10-21: keep the mapping.** Against Keycloak the defaults worked for email, names, subject and groups
+> with no change. The one gap was `roles`, which the handler renames (D9); provisioning now accepts both forms, so the
+> stored claim-type defaults stay as they are and no store needs reconfiguring.
 
 ---
 

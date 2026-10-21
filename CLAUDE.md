@@ -1914,9 +1914,10 @@ These are intentionally deferred and should be resolved before they block real w
   First suite: `ExternalAuth.SSO` (66 cases, 2026-10-20). Still open: service tests over SQLite (they need nop's
   test bootstrap) and the SSO sign-in flows against a real IdP (Note C). Run: `dotnet test Tests/CW.Tests`.
 - **Note B — Default theme. CLOSED 2026-08-27.** Only `DefaultClean` is deployed today, so nothing collides and there is no decision outstanding. The underlying hazard is real but is now written down where it will be found: **§10.4** records that `ViewLocationExpander` puts plugin views ahead of theme views, lists the five storefront views CW.Core forks, and gives the four-step check to run when a theme is enabled. `Voyage` and `Pavilion` remain `.gitignore`d; if either is enabled, run §10.4 step 2 first. (Theme plugins are not ported to 5.00 yet.)
-- **Note C — SSO sign-in against a real IdP.** OIDC and SAML sign-in, sign-out and `id_token_hint` have not run
-  against a real identity provider (Entra or Keycloak). Until they have, treat both flows as unverified; the open
-  checks are listed in the SSO plugin's `References/` docs.
+- **Note C — SSO sign-in against a real IdP. Keycloak DONE 2026-10-21; Entra still open.** OIDC and SAML sign-in and
+  sign-out pass end to end against Keycloak 26 (SSO reference §12.1); the run found seven defects, all fixed
+  (D10, admin lockout, fixed the same day). Microsoft Entra itself is the remaining confirmation; the cases still to run are in
+  the SSO reference §12.2.
 
 ---
 
@@ -1942,6 +1943,9 @@ These are intentionally deferred and should be resolved before they block real w
 **Don't**
 - Commit a real tenant ID, secret, certificate or connection string — the repository is public — see §0.9
 - Read camelCase properties from nop admin JSON in plugin JS — it is PascalCase — see §10.5
+- Return `Redirect(...)` / a `RedirectResult` for an address whose query carries Base64 or a signature (SAML, signed
+  links): nop's `NopRedirectResultExecutor` URL-decodes the whole address first. Set `Location` yourself — see the SSO
+  plugin's `SamlRedirectResult` (`tasks/lessons.md` #16)
 - Edit anything under `Libraries/Nop.*`, `Presentation/Nop.*`, `Tests/Nop.Tests`, or any OOTB `Nop.Plugin.*`
 - Use a different ORM, validation library, or mapper
 - Use `EngineContext.Current.Resolve<T>()` in new code

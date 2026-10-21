@@ -66,6 +66,15 @@ public class SsoMonitoringService : ISsoMonitoringService
     }
 
     /// <param name="shownDate">Date shown to the admin; defaults to <paramref name="expiresUtc"/>'s date</param>
+    /// <summary>
+    /// Whether these store settings lock every admin out of the store's own login (D10): <c>/login</c>
+    /// always goes to the IdP (SSO on, a protocol, "Redirect login to SSO"), the bypass link is off
+    /// (no bypass token) and SSO never signs in an admin account. Used by the Configure validator to
+    /// refuse such a save and here to report a store already in that state.
+    /// </summary>
+    internal static bool LocksAdminsOut(bool isEnabled, SsoProtocol protocol, bool redirectLoginToSso, bool hasBypassToken)
+        => isEnabled && protocol != SsoProtocol.Off && redirectLoginToSso && !hasBypassToken;
+
     private async Task AddExpiryFindingAsync(IList<SsoMonitoringFinding> findings, int storeId, string storeName,
         DateTime expiresUtc, int warningDays, string expiredKey, string expiringKey, DateTime? shownDate = null)
     {
@@ -128,13 +137,19 @@ public class SsoMonitoringService : ISsoMonitoringService
     public async Task<IList<SsoMonitoringFinding>> GetFindingsAsync()
     {
         var findings = new List<SsoMonitoringFinding>();
-        var warningDays = (await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0)).CertificateWarningDays;
+        var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
+        var warningDays = systemWide.CertificateWarningDays;
+        var hasBypassToken = !string.IsNullOrEmpty(systemWide.SsoBypassToken);
 
         foreach (var store in await _storeService.GetAllStoresAsync())
         {
             var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
             if (!settings.IsEnabled || settings.Protocol == SsoProtocol.Off)
                 continue;
+
+            if (LocksAdminsOut(settings.IsEnabled, settings.Protocol, settings.RedirectLoginToSso, hasBypassToken))
+                findings.Add(new(store.Id, true, string.Format(
+                    await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Warnings.AdminLockout"), store.Name)));
 
             if (settings.Protocol == SsoProtocol.Saml2)
                 await AddSamlFindingsAsync(findings, store.Id, store.Name, settings, warningDays);

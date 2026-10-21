@@ -6,7 +6,7 @@
 | **SystemName** | `ExternalAuth.SSO` · Group `ExternalAuth methods` · FriendlyName *SSO Authentication* |
 | **Host** | nopCommerce **5.00**, .NET **10** (`C:\Work\CW_NOP_5`). Ported from the 4.90 / .NET 9 build on 2026-10-19 |
 | **Protocols** | OpenID Connect (primary) and SAML 2.0 (secondary), one per store |
-| **Status** | Builds and installs on 5.00; admin pages work. Gaps G1–G14 fixed 2026-10-19 (§11). **OIDC and SAML sign-in have not been tested against a real IdP on 5.00** — see §12 |
+| **Status** | Builds and installs on 5.00; admin pages work. Gaps G1–G14 fixed 2026-10-19 (§11). **OIDC and SAML sign-in and sign-out tested end to end against a real IdP (Keycloak 26) on 2026-10-21** — seven defects found and fixed (D8–D14); see §12. Not yet run against Microsoft Entra itself |
 | **Coupling** | None. Generic plugin, no reference to CW.Core |
 
 This document describes the plugin **as built**. It replaces `SSOPlan.v2.md` (the design spec, written before
@@ -176,6 +176,11 @@ The public button (`SSOAuthenticationViewComponent` → `PublicInfo.cshtml`) ren
   fail on every page.
 - `LoginCallback` authenticates against the OIDC scheme, reads the access token, and calls the provisioning
   service (§5.4).
+- **Claims are mapped by the handler** (`MapInboundClaims` left on — review C2, settled): `sub`, `email`, the name
+  claims arrive under the long `ClaimTypes` URIs, which the defaults and fallbacks expect; `groups` is not renamed.
+  `roles` / `role` become `ClaimTypes.Role`, so provisioning accepts a configured claim type in either form
+  (`IsConfiguredClaimType`, D9). Where the IdP advertises it, the handler uses Pushed Authorization Requests (PAR):
+  the authorize URL carries only a `request_uri`, valid for about a minute.
 
 ### 5.3 SAML 2.0 (ITfoxtec)
 
@@ -184,9 +189,19 @@ The public button (`SSOAuthenticationViewComponent` → `PublicInfo.cshtml`) ren
   **Logout** when `SignLogoutRequest` is on, **Metadata** when either is. ITfoxtec signs whatever it binds when a
   certificate is present, so this is what keeps the two kinds of signing independent. A PFX is required when the
   purpose signs or `EncryptedAssertion` is on.
-- **Challenge** (`SamlChallengeBuilder`): builds the `AuthnRequest`, binds with the configured binding, writes the
+- **Challenge** (`SamlChallengeBuilder`): builds the `AuthnRequest` — with `ProtocolBinding = HTTP-POST`, because the
+  ACS accepts POST only (an IdP not told may answer in the URL, D12) — binds with the configured binding, writes the
   `Login` audit row, and stores the request ID and return URL in the correlation cookie
   `.AspNetCore.ExternalAuthSSO.SamlCorrelation` (10 minutes). No session state, so several tabs can sign in at once.
+- **Redirect binding goes around nop's redirect executor.** nop's `NopRedirectResultExecutor` URL-decodes every
+  `RedirectResult` address (when `SecuritySettings.AllowNonAsciiCharactersInHeaders` is on), which turns the escaped
+  Base64 of `SAMLRequest` back into raw `+` `/` `=` and makes the IdP refuse it (D11). Both SAML redirects (AuthnRequest,
+  SP-initiated LogoutRequest) return `Services/Saml/SamlRedirectResult`, which sets `Location` itself. **Any future
+  redirect carrying a signed or Base64 query must do the same** — never `Redirect(...)` / `ToActionResult()`.
+- **Signature trust is the pinned certificate** (review C1, settled): `CertificateValidationMode = None`,
+  `RevocationMode = NoCheck`. ITfoxtec verifies a signature only against `SignatureValidationCertificates` (the stored
+  IdP certificate), so no chain is needed — and IdP signing certificates are self-signed, which `ChainTrust` refused
+  (D13). Expiry is not checked by the library; System → Warnings reports it (§7.4).
 - **Correlation cookies** (`SamlCookieOptions`, login and logout): `SameSite=None; Secure` over HTTPS, because the
   IdP comes back with a cross-site POST and browsers drop `Lax` cookies on those. Over plain HTTP they fall back to
   `Lax` and correlation cannot work — **SAML needs HTTPS end to end.**
@@ -250,13 +265,20 @@ last name from the claims (store claim types, then the standard URIs) — the sa
 
 ### 6.1 `LoginActionsFilter` — `GET Customer/Login`
 
-Does nothing unless the store has SSO enabled with `RedirectLoginToSso` on. Then:
+Does nothing unless the store has SSO enabled with `RedirectLoginToSso` on **and the plugin is active** for the
+store and customer in nop's external sign-in methods (otherwise the challenge refuses and returns to `/login` —
+without this check that was an endless redirect loop, D10). Then:
 
 - bypass cookie already present → local form renders;
-- `?ssobypass=<token>` matches the decrypted `SsoBypassToken` (constant-time compare) → issues
+- `?ssobypass=<token>` matches the decrypted `SsoBypassToken` (constant-time compare, over SHA-256 hashes) → issues
   `.AspNetCore.ExternalAuthSSO.BypassUsed` (HttpOnly, Lax, 5 minutes) and renders the local form;
 - otherwise → redirect to `ExternalAuthentication/Login`. A wrong token is treated as no token, so the page does
   not reveal whether a bypass exists.
+
+**The bypass token is the only way an admin reaches a redirecting store's login** (SSO never signs in an admin
+account). So the plugin never lets the two conflict (D10): Configure refuses to turn `RedirectLoginToSso` on while no
+token is stored, and refuses to clear the token while any store redirects; a store found in that state anyway is a
+failure under System → Warnings (§7.4). The rule is `SsoMonitoringService.LocksAdminsOut`.
 
 ### 6.2 `LocalLoginEnforcementFilter` — `POST Customer/Login` with the bypass cookie
 
@@ -278,7 +300,8 @@ replaces nop's redirect:
 `id_token_hint`: the filter also captures the `OidcIdToken` attribute saved at sign-in and puts it in the sign-out
 properties; `OnRedirectToIdentityProviderForSignOut` (in `OidcAuthenticationRegistrar`) sets it as `IdTokenHint`.
 nop's external-auth cookie is gone by logout time, so the handler could not find it on its own. With the hint Entra
-skips the account picker and honours `post_logout_redirect_uri`. Not yet run against an IdP.
+skips the account picker and honours `post_logout_redirect_uri`. Verified against Keycloak (§12.1): no logout
+confirmation prompt, and the IdP session ended.
 
 ### 6.4 SAML Single Log-Out (`/saml/logout`, `SamlLogoutHandler`)
 
@@ -342,6 +365,7 @@ plugin update removes its record.
 | SP certificate (PFX) expired / expiring / unreadable — only when signing or encryption uses it | Fail / Warning / Fail | the stored PFX |
 | OIDC client secret expired / expiring | Fail / Warning | `ClientSecretExpiresOnUtc`, typed by the admin (Entra does not expose it without Graph); good through the end of that day |
 | IdP metadata differs from the stored values, or could not be read | Warning | the last comparison (`IdpMetadataDifferences`) |
+| "Redirect login to SSO" on with no bypass token — no admin can reach the store's login (D10) | Fail | the store's settings and the system-wide token |
 
 "Expiring" = within `CertificateWarningDays` (default 30). Built live by `SsoSystemWarningsConsumer`
 (`IConsumer<SystemWarningCreatedEvent>`, which is why the plugin references `Nop.Web`) from `ISsoMonitoringService`,
@@ -469,12 +493,13 @@ without a restart (G2); `AutoRegister`, the two redirect URLs and `SignLogoutReq
 and unsolicited responses are refused unless allowed (G5, G12); the mock never touches `/saml/acs` (G6); Test
 connection has the URL guard (G7); the plugin's active flag is honoured (G8); bad privileged mappings are logged
 (G9); `BypassDenied` has no protocol (G10); existing customers are linked by email and only real sign-ins are
-audited as success (G13); default roles are applied (G14). **None of it has run against a real IdP yet** (§12).
+audited as success (G13); default roles are applied (G14). Run against a real IdP (Keycloak) on 2026-10-21 (§12).
 
 **Still open:**
 
 | Item | Effect |
 |---|---|
+| Not run against Entra | The Keycloak test covers both protocols; an Entra tenant is the final confirmation (group overage, Entra's claim names) |
 | Web farm OIDC changes | A settings save reaches other servers only when their cached options expire (15 minutes) |
 | nop registration type | nop's `UserRegistrationType` = *Disabled* refuses new SSO users even with `AutoRegister` on |
 
@@ -500,22 +525,61 @@ nop's default `ExternalAuthentication/*` rather than `/external-auth/microsoft/c
 secrets format (round trip, empty, old format and foreign keys refused), bypass-token match, email-domain allowlist,
 group-overage detection, role changes (grant / remove / owned-set boundary), mapping-value pattern, privileged roles,
 SAML binding parse, certificate loading (Base64, PEM, bad input) and SHA-256 thumbprint, and the outbound-URL guard
-(private / reserved addresses, HTTP, loopback), expiry windows and how a metadata comparison is described (77
-cases). The helpers they reach are `internal`, visible to `CW.Tests` only.
+(private / reserved addresses, HTTP, loopback), expiry windows, how a metadata comparison is described, and claim
+types in the form the OIDC handler renames them (84 cases). The helpers they reach are `internal`, visible to
+`CW.Tests` only.
 
-**Sign-in flows** — not yet done on 5.00: real OIDC and SAML sign-in. A local Keycloak (Docker) covers both protocols; Auth0 / Okta
-developer tenants also work. Run over **HTTPS** (SAML correlation needs it), on **two stores with different IdP
-settings**. The full case list is `SSO_Gaps_Fix_Spec.md` §4; the minimum per protocol:
+### 12.1 Real-IdP test — Keycloak 26, 2026-10-21
 
-1. New user → `AutoRegistered`; existing unlinked user → `Linked`; returning user → `Login`; admin email → blocked.
+**Set-up.** Keycloak in a GitHub Codespace (`quay.io/keycloak/keycloak:26.0`, `start-dev`, `KC_HOSTNAME` set to the
+public forwarded address, port 8080 **public**, data on a Docker volume); nop local on `https://localhost:59579`.
+Realm `cw-test`: users alice (group `staff`) and bob (`staff`, `store-managers`, app role `Store.Manager`); client
+`nop-oidc` (confidential, PKCE, groups and app-role mappers); SAML client `https://localhost:59579/saml/metadata`
+(email NameID, email / name / groups attributes under the plugin's default names). nop store 1: mappings
+`store-managers` → Forum Moderators and `Store.Manager` → a test role; bob pre-created in nop **without a password**.
+The realm is a JSON import (no passwords or secrets in it); the test users' passwords are set in the Keycloak console.
+
+| Case | OIDC | SAML |
+|---|---|---|
+| New user → `AutoRegistered`, names from claims, link on the IdP subject | ✅ alice | — |
+| Existing customer → `Linked` by email | ✅ bob (after D8) | ✅ alice (SAML links by NameID = email) |
+| Returning customer → `SignedIn` | ✅ bob | ✅ alice |
+| Group mapping grants a role | ✅ `store-managers` → Forum Moderators | ✅ groups read from the attribute |
+| App-role mapping grants a role | ✅ `Store.Manager` (after D9) | — (no app-role attribute sent) |
+| Sign-out ends the IdP session too | ✅ `id_token_hint` (F1): no Keycloak prompt, next sign-in asks for credentials | ✅ `Slo`, LogoutResponse validated (after D14) |
+| Metadata import from the IdP URL | — | ✅ entity ID, SSO / SLO URLs, certificate |
+| Handshake (Test connection, daily check) | discovery ✅ | ✅ all four match; a new IdP certificate was reported as a mismatch, then matched after re-import |
+
+**Defects found and fixed** (detail: `SSO_Code_Review_2026-10.md` §2.1): D8 crash for an existing customer with no
+password record; D9 app roles ignored over OIDC; D11 SAML request corrupted by nop's redirect executor; D12 response
+binding not requested; D13 self-signed IdP certificate refused; D14 SAML log-out response unreadable; D10 admin lockout (fixed the same day, below).
+admin lockout (§11).
+
+**Practical notes for the next run.**
+- The plugin's metadata fetch refuses non-public addresses, so the IdP must have a public HTTPS address (here, the
+  public codespace port); `localhost` IdPs need the metadata pasted in.
+- A codespace stops after ~30 min idle and the forwarded port can turn private again; `docker start keycloak` and set
+  the port public. A suspended codespace once corrupted the container (`RWLayer … unexpectedly nil`): with the data on
+  a volume, recreate the container and the realm survives.
+- GitHub's "development port" notice appears once per codespace session in each browser; it does not alter requests.
+- Admin sign-in and the SSO sign-ins need separate cookie jars (admin in one window, SSO users in a private one) —
+  an SSO sign-in replaces the admin session.
+
+### 12.2 Cases still to run (on Entra, or a second Keycloak round)
+
+The full case list is `SSO_Gaps_Fix_Spec.md` §4; not yet covered by §12.1:
+
+1. Admin email → blocked (`acs_admin_account_blocked`).
 2. Disallowed email domain → blocked; new user with `AutoRegister` off → blocked.
-3. Group mapping grants and revokes roles; default roles applied; Administrators never granted.
-4. `/login` redirects to the IdP; `?ssobypass=` lets an admin in and turns a non-admin away (`BypassDenied`).
-5. Logout: nop's `PublicStore.Logout` activity, then the IdP sign-out, then the post-logout page. SAML writes `Slo`.
-6. Admin impersonating an SSO customer clicks Logout → back on the admin customer page, still signed in.
-7. Change store A's OIDC client ID, save, log in again → new client ID, no restart.
-8. Store with SSO off: normal login, no button, logout untouched.
-9. Release build: `/mocksso/login` returns 404.
+3. A group removed at the IdP → the mapped role is revoked at the next sign-in; default roles applied; Administrators
+   never granted.
+4. `?ssobypass=` turns a non-admin away (`BypassDenied`). (The admin side was checked with D10.)
+5. Admin impersonating an SSO customer clicks Logout → back on the admin customer page, still signed in.
+6. Two stores with different IdP settings; change store A's OIDC client ID, save, log in again → new client ID, no
+   restart.
+7. Store with SSO off: normal login, no button, logout untouched.
+8. Release build: `/mocksso/login` returns 404.
+9. Entra specifics: group overage marker, Entra's claim names, a real certificate rollover with automatic apply.
 
 ---
 
