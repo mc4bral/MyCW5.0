@@ -30,83 +30,9 @@ public class OnboardingReportService : IOnboardingReportService
 
     #endregion
 
-    #region Methods
+    #region Utilities
 
-    /// <inheritdoc />
-    public async Task<string> BuildReportAsync(int storeScope, string requestScheme, string requestHost)
-    {
-        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeScope);
-
-        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? settings.BaseUrl.TrimEnd('/')
-            : (!string.IsNullOrWhiteSpace(requestScheme) && !string.IsNullOrWhiteSpace(requestHost)
-                ? $"{requestScheme}://{requestHost}"
-                : string.Empty);
-
-        var storeName = "(All stores)";
-        if (storeScope > 0)
-        {
-            var store = await _storeService.GetStoreByIdAsync(storeScope);
-            if (store is not null)
-                storeName = store.Name;
-        }
-
-        var sb = new StringBuilder();
-        const string sep = "------------------------------------------------------------";
-
-        sb.AppendLine("SSO — Identity Provider onboarding information");
-        sb.Append("Store: ").Append(storeName)
-            .Append("    Generated: ").Append(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm 'UTC'"))
-            .AppendLine();
-        if (!string.IsNullOrWhiteSpace(settings.IdpDisplayName))
-            sb.Append("IdP display name: ").AppendLine(settings.IdpDisplayName);
-        sb.Append("Protocol selected: ").AppendLine(settings.Protocol.ToString());
-        sb.AppendLine();
-        sb.AppendLine("This document has two sections:");
-        sb.AppendLine("  1. Values to paste into your Identity Provider (Entra / ADFS / Okta).");
-        sb.AppendLine("  2. Values we need you to send back so we can finish the setup.");
-        sb.AppendLine();
-
-        // ----- Section 1 --------------------------------------------------------
-        sb.AppendLine(sep);
-        sb.AppendLine("SECTION 1 — Paste these values into your IdP");
-        sb.AppendLine(sep);
-        sb.AppendLine();
-
-        if (settings.Protocol == SsoProtocol.OpenIdConnect)
-            BuildOidcSection1(sb, settings, baseUrl);
-        else if (settings.Protocol == SsoProtocol.Saml2)
-            BuildSamlSection1(sb, settings, baseUrl);
-        else
-            sb.AppendLine("(Protocol is currently set to Off — pick OIDC or SAML on the Configure page first.)");
-
-        sb.AppendLine();
-
-        // ----- Section 2 --------------------------------------------------------
-        sb.AppendLine(sep);
-        sb.AppendLine("SECTION 2 — Please send the following back");
-        sb.AppendLine(sep);
-        sb.AppendLine();
-
-        if (settings.Protocol == SsoProtocol.OpenIdConnect)
-            BuildOidcSection2(sb);
-        else if (settings.Protocol == SsoProtocol.Saml2)
-            BuildSamlSection2(sb);
-        else
-            BuildGenericSection2(sb);
-
-        sb.AppendLine();
-        sb.AppendLine("Once we receive the items above we will load them into the SSO configuration");
-        sb.AppendLine("on your store and run an end-to-end test login with you. If anything in this");
-        sb.AppendLine("document is unclear, reply to this email and we will help.");
-        sb.AppendLine();
-
-        return sb.ToString();
-    }
-
-    #endregion
-
-    #region Utilities — OIDC
+    #region OIDC
 
     private static void BuildOidcSection1(StringBuilder sb, SsoConfigurationSettings settings, string baseUrl)
     {
@@ -153,7 +79,7 @@ public class OnboardingReportService : IOnboardingReportService
 
     #endregion
 
-    #region Utilities — SAML
+    #region SAML
 
     private static void BuildSamlSection1(StringBuilder sb, SsoConfigurationSettings settings, string baseUrl)
     {
@@ -243,7 +169,7 @@ public class OnboardingReportService : IOnboardingReportService
 
     #endregion
 
-    #region Utilities — formatting
+    #region Formatting
 
     private static void AppendValue(StringBuilder sb, string title, string path1, string? path2, string value)
     {
@@ -264,6 +190,84 @@ public class OnboardingReportService : IOnboardingReportService
 
     private static string WithDefault(string? value, string fallback)
         => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    #endregion
+
+    #endregion
+
+    #region Methods
+
+    /// <inheritdoc />
+    public async Task<string> BuildReportAsync(int storeScope, string requestScheme, string requestHost)
+    {
+        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeScope);
+
+        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
+            ? settings.BaseUrl.TrimEnd('/')
+            : (!string.IsNullOrWhiteSpace(requestScheme) && !string.IsNullOrWhiteSpace(requestHost)
+                ? $"{requestScheme}://{requestHost}"
+                : string.Empty);
+
+        var storeName = "(All stores)";
+        if (storeScope > 0)
+        {
+            var store = await _storeService.GetStoreByIdAsync(storeScope);
+            if (store is not null)
+                storeName = store.Name;
+        }
+
+        var sb = new StringBuilder();
+        const string sep = "------------------------------------------------------------";
+
+        sb.AppendLine("SSO — Identity Provider onboarding information");
+        sb.Append("Store: ").Append(storeName)
+            .Append("    Generated: ").Append(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm 'UTC'"))
+            .AppendLine();
+        if (!string.IsNullOrWhiteSpace(settings.IdpDisplayName))
+            sb.Append("IdP display name: ").AppendLine(settings.IdpDisplayName);
+        sb.Append("Protocol selected: ").AppendLine(settings.Protocol.ToString());
+        sb.AppendLine();
+        sb.AppendLine("This document has two sections:");
+        sb.AppendLine("  1. Values to paste into your Identity Provider (Entra / ADFS / Okta).");
+        sb.AppendLine("  2. Values we need you to send back so we can finish the setup.");
+        sb.AppendLine();
+
+        // ----- Section 1 --------------------------------------------------------
+        sb.AppendLine(sep);
+        sb.AppendLine("SECTION 1 — Paste these values into your IdP");
+        sb.AppendLine(sep);
+        sb.AppendLine();
+
+        if (settings.Protocol == SsoProtocol.OpenIdConnect)
+            BuildOidcSection1(sb, settings, baseUrl);
+        else if (settings.Protocol == SsoProtocol.Saml2)
+            BuildSamlSection1(sb, settings, baseUrl);
+        else
+            sb.AppendLine("(Protocol is currently set to Off — pick OIDC or SAML on the Configure page first.)");
+
+        sb.AppendLine();
+
+        // ----- Section 2 --------------------------------------------------------
+        sb.AppendLine(sep);
+        sb.AppendLine("SECTION 2 — Please send the following back");
+        sb.AppendLine(sep);
+        sb.AppendLine();
+
+        if (settings.Protocol == SsoProtocol.OpenIdConnect)
+            BuildOidcSection2(sb);
+        else if (settings.Protocol == SsoProtocol.Saml2)
+            BuildSamlSection2(sb);
+        else
+            BuildGenericSection2(sb);
+
+        sb.AppendLine();
+        sb.AppendLine("Once we receive the items above we will load them into the SSO configuration");
+        sb.AppendLine("on your store and run an end-to-end test login with you. If anything in this");
+        sb.AppendLine("document is unclear, reply to this email and we will help.");
+        sb.AppendLine();
+
+        return sb.ToString();
+    }
 
     #endregion
 }

@@ -79,6 +79,10 @@ public record ConfigurationModel : BaseNopModel
     public string ClientSecret { get; set; } = string.Empty;
     public bool HasClientSecret { get; set; }
 
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.ClientSecretExpiresOnUtc")]
+    [UIHint("DateNullable")]
+    public DateTime? ClientSecretExpiresOnUtc { get; set; }
+
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.CallbackPath")]
     public string CallbackPath { get; set; } = string.Empty;
 
@@ -104,6 +108,15 @@ public record ConfigurationModel : BaseNopModel
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.IdpMetadataUrl")]
     public string IdpMetadataUrl { get; set; } = string.Empty;
+
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AutoApplyIdpMetadata")]
+    public bool AutoApplyIdpMetadata { get; set; }
+
+    /// <summary>Last metadata comparison (display only).</summary>
+    public DateTime? IdpMetadataCheckedOnUtc { get; set; }
+
+    /// <summary>What the last comparison found different; empty = matched (display only).</summary>
+    public string IdpMetadataDifferences { get; set; } = string.Empty;
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.SpEntityId")]
     public string SpEntityId { get; set; } = string.Empty;
@@ -253,6 +266,9 @@ public record ConfigurationModel : BaseNopModel
 
     [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.AuditRetentionDays")]
     public int AuditRetentionDays { get; set; }
+
+    [NopResourceDisplayName("Plugins.ExternalAuth.SSO.Fields.CertificateWarningDays")]
+    public int CertificateWarningDays { get; set; }
 
     #endregion
 }

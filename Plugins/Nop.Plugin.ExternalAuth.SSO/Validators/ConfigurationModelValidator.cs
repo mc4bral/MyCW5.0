@@ -28,6 +28,14 @@ public class ConfigurationModelValidator : BaseNopValidator<ConfigurationModel>
             .GreaterThanOrEqualTo(0)
             .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.AuditRetentionDays.Invalid"));
 
+        // System-wide card only. A store-scope post does not carry the field (it binds to 0), and the
+        // form does not post the scope either — so 0 means "not on this page" and is not validated;
+        // the factory then keeps the stored value.
+        RuleFor(m => m.CertificateWarningDays)
+            .InclusiveBetween(1, 365)
+            .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.CertificateWarningDays.Invalid"))
+            .When(m => m.CertificateWarningDays != 0);
+
         RuleFor(m => m.BaseUrl)
             .NotEmpty()
             .WithMessageAwait(localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Fields.BaseUrl.Required"))

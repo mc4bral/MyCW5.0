@@ -39,6 +39,53 @@ public class SsoAuthEventModelFactory : ISsoAuthEventModelFactory
 
     #endregion
 
+    #region Utilities
+
+    private async Task<IList<SelectListItem>> BuildStoreOptionsAsync()
+    {
+        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllStores");
+        var options = new List<SelectListItem>
+        {
+            new() { Value = "0", Text = anyLabel }
+        };
+        foreach (var store in await _storeService.GetAllStoresAsync())
+            options.Add(new SelectListItem { Value = store.Id.ToString(), Text = store.Name });
+        return options;
+    }
+
+    private async Task<IList<SelectListItem>> BuildEventTypeOptionsAsync()
+    {
+        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllEventTypes");
+        return new List<SelectListItem>
+        {
+            new() { Value = string.Empty, Text = anyLabel },
+            new() { Value = SsoAuthEventTypes.Login, Text = "Login started" },
+            new() { Value = SsoAuthEventTypes.AutoRegistered, Text = "Auto-registered" },
+            new() { Value = SsoAuthEventTypes.Linked, Text = "Linked" },
+            new() { Value = SsoAuthEventTypes.SignedIn, Text = "Signed in" },
+            new() { Value = SsoAuthEventTypes.Slo, Text = "SLO" },
+            new() { Value = SsoAuthEventTypes.Failed, Text = "Failed" },
+            new() { Value = SsoAuthEventTypes.BypassDenied, Text = "Bypass denied" },
+            new() { Value = SsoAuthEventTypes.ConfigChanged, Text = "Config changed" },
+            new() { Value = SsoAuthEventTypes.LogCleared, Text = "Log cleared" },
+            new() { Value = SsoAuthEventTypes.HandshakeRun, Text = "Test connection" },
+            new() { Value = SsoAuthEventTypes.ScheduledCheck, Text = "Scheduled check" }
+        };
+    }
+
+    private async Task<IList<SelectListItem>> BuildProtocolOptionsAsync()
+    {
+        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllProtocols");
+        return new List<SelectListItem>
+        {
+            new() { Value = string.Empty, Text = anyLabel },
+            new() { Value = SsoProtocolNames.Oidc, Text = "OpenID Connect" },
+            new() { Value = SsoProtocolNames.Saml2, Text = "SAML 2.0" }
+        };
+    }
+
+    #endregion
+
     #region Methods
 
     /// <inheritdoc />
@@ -89,51 +136,6 @@ public class SsoAuthEventModelFactory : ISsoAuthEventModelFactory
         });
 
         return model;
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private async Task<IList<SelectListItem>> BuildStoreOptionsAsync()
-    {
-        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllStores");
-        var options = new List<SelectListItem>
-        {
-            new() { Value = "0", Text = anyLabel }
-        };
-        foreach (var store in await _storeService.GetAllStoresAsync())
-            options.Add(new SelectListItem { Value = store.Id.ToString(), Text = store.Name });
-        return options;
-    }
-
-    private async Task<IList<SelectListItem>> BuildEventTypeOptionsAsync()
-    {
-        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllEventTypes");
-        return new List<SelectListItem>
-        {
-            new() { Value = string.Empty, Text = anyLabel },
-            new() { Value = SsoAuthEventTypes.Login, Text = "Login started" },
-            new() { Value = SsoAuthEventTypes.AutoRegistered, Text = "Auto-registered" },
-            new() { Value = SsoAuthEventTypes.Linked, Text = "Linked" },
-            new() { Value = SsoAuthEventTypes.SignedIn, Text = "Signed in" },
-            new() { Value = SsoAuthEventTypes.Slo, Text = "SLO" },
-            new() { Value = SsoAuthEventTypes.Failed, Text = "Failed" },
-            new() { Value = SsoAuthEventTypes.BypassDenied, Text = "Bypass denied" },
-            new() { Value = SsoAuthEventTypes.ConfigChanged, Text = "Config changed" },
-            new() { Value = SsoAuthEventTypes.LogCleared, Text = "Log cleared" }
-        };
-    }
-
-    private async Task<IList<SelectListItem>> BuildProtocolOptionsAsync()
-    {
-        var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllProtocols");
-        return new List<SelectListItem>
-        {
-            new() { Value = string.Empty, Text = anyLabel },
-            new() { Value = SsoProtocolNames.Oidc, Text = "OpenID Connect" },
-            new() { Value = SsoProtocolNames.Saml2, Text = "SAML 2.0" }
-        };
     }
 
     #endregion

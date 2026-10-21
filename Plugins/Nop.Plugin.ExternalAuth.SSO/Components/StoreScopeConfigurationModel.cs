@@ -43,16 +43,16 @@ public partial record StoreModel : BaseNopEntityModel
         #region Properties
 
         [NopResourceDisplayName("Admin.Configuration.Stores.Fields.Name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [NopResourceDisplayName("Admin.Configuration.Stores.Fields.Url")]
-        public string Url { get; set; }
+        public string Url { get; set; } = string.Empty;
 
         [NopResourceDisplayName("Admin.Configuration.Stores.Fields.SslEnabled")]
         public virtual bool SslEnabled { get; set; }
 
         [NopResourceDisplayName("Admin.Configuration.Stores.Fields.Hosts")]
-        public string Hosts { get; set; }
+        public string Hosts { get; set; } = string.Empty;
 
         [NopResourceDisplayName("Admin.Configuration.Stores.Fields.DisplayOrder")]
         public int DisplayOrder { get; set; }

@@ -5,9 +5,9 @@
     ViewBag.PageTitle = T("Plugins.ExternalAuth.SSO.SsoAccounts.PageTitle").Text;
     NopHtml.SetActiveMenuItemSystemName("ExternalAuth.SSO.SsoAccounts");
 
-    // Grid renderers and the Test / Delete buttons live in Content/Admin/sso-admin.js; it reads
+    // Grid renderers and the Test / Delete buttons live in Content/Admin/Sso/sso-admin.js; it reads
     // the .sso-accounts-config div below.
-    NopHtml.AddScriptParts(ResourceLocation.Footer, "~/Plugins/ExternalAuth.SSO/Content/Admin/sso-admin.js");
+    NopHtml.AddScriptParts(ResourceLocation.Footer, "~/Plugins/ExternalAuth.SSO/Content/Admin/Sso/sso-admin.js");
 
     var ssoAccountsResources = new Dictionary<string, string>
     {

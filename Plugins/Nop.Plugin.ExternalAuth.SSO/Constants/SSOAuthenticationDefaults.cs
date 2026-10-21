@@ -87,6 +87,12 @@ public static class SSOAuthenticationDefaults
     /// <summary>Type of the scheduled task that deletes old audit rows.</summary>
     public const string AuditRetentionTaskType = "Nop.Plugin.ExternalAuth.SSO.Services.SsoAuditRetentionTask";
 
+    /// <summary>Name of the scheduled task that checks certificates and IdP metadata.</summary>
+    public const string DailyCheckTaskName = "SSO certificate and metadata check";
+
+    /// <summary>Type of the scheduled task that checks certificates and IdP metadata.</summary>
+    public const string DailyCheckTaskType = "Nop.Plugin.ExternalAuth.SSO.Services.SsoDailyCheckTask";
+
     /// <summary>
     /// Entra OIDC group-overage marker: a JSON object whose <c>groups</c> entry points at the
     /// Microsoft Graph source of the groups that did not fit in the token.

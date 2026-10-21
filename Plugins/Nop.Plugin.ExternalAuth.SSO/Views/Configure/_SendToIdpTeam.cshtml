@@ -1,0 +1,105 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-sendtoIdp" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <p class="form-text text-muted mb-3">
+        @T("Plugins.ExternalAuth.SSO.Cards.SendToIdpTeam.Hint")
+    </p>
+
+    <div class="form-group row">
+        <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.OnboardingReport.Label")</label>
+        <div class="col-md-9">
+            <div class="mb-2">
+                <button type="button" class="btn btn-default" id="btnRefreshOnboardingReport">
+                    <i class="fas fa-sync-alt"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.RefreshButton")
+                </button>
+                <button type="button" class="btn btn-primary" id="btnCopyOnboardingReport">
+                    <i class="fas fa-clipboard"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.CopyButton")
+                </button>
+                <a class="btn btn-default" asp-action="OnboardingReport" target="_blank">
+                    <i class="fas fa-download"></i> @T("Plugins.ExternalAuth.SSO.OnboardingReport.DownloadButton")
+                </a>
+            </div>
+            <textarea id="OnboardingReportText" class="form-control" rows="10" readonly
+                      style="font-family: monospace; font-size: 0.85em;">@T("Plugins.ExternalAuth.SSO.OnboardingReport.Hint").Text</textarea>
+        </div>
+    </div>
+
+    @*
+        Protocol-aware quick-reference URLs. Both sections render; the
+        protocol-visibility JS at the bottom of the page hides whichever
+        doesn't apply. When Protocol = Off both stay visible (matches the
+        "show everything when Off" rule for the rest of the page).
+    *@
+
+    @* --- SAML: SP Metadata URL ------------------------------------- *@
+    <div id="sendToIdp-saml-section">
+        <div class="form-group row">
+            <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl")</label>
+            <div class="col-md-9">
+                @{
+                    var spMetadataUrl = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                        ? "(set Base URL first)"
+                        : Model.BaseUrl.TrimEnd('/') + "/saml/metadata";
+                }
+                <div class="input-group">
+                    <input type="text" class="form-control" readonly value="@spMetadataUrl" id="SpMetadataUrlField" />
+                    <div class="input-group-append">
+                        <a class="btn btn-default" href="@spMetadataUrl" target="_blank">
+                            <i class="fas fa-external-link-alt"></i> @T("Admin.Common.Open")
+                        </a>
+                        <button type="button" class="btn btn-default js-sso-copy" data-copy-target="SpMetadataUrlField">
+                            <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                        </button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpMetadataUrl.Hint")</small>
+            </div>
+        </div>
+    </div>
+
+    @* --- OIDC: Redirect URI + Post-logout Redirect URI ------------- *@
+    @* These are the two URLs the IdP team must paste into the Entra app *@
+    @* registration's Authentication blade. Computed from BaseUrl +       *@
+    @* CallbackPath / + the OIDC signed-out callback constant.            *@
+    <div id="sendToIdp-oidc-section">
+        @{
+            var oidcRedirectUri = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                ? "(set Base URL first)"
+                : Model.BaseUrl.TrimEnd('/') + (string.IsNullOrWhiteSpace(Model.CallbackPath) ? "/signin-microsoft" : Model.CallbackPath);
+
+            var oidcPostLogoutUri = string.IsNullOrWhiteSpace(Model.BaseUrl)
+                ? "(set Base URL first)"
+                : Model.BaseUrl.TrimEnd('/') + Nop.Plugin.ExternalAuth.SSO.Constants.SSOAuthenticationDefaults.OidcSignedOutCallbackPath;
+        }
+        <div class="form-group row">
+            <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.OidcRedirectUri")</label>
+            <div class="col-md-9">
+                <div class="input-group">
+                    <input type="text" class="form-control" readonly value="@oidcRedirectUri" id="OidcRedirectUriField" />
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-default js-sso-copy" data-copy-target="OidcRedirectUriField">
+                            <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                        </button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.OidcRedirectUri.Hint")</small>
+            </div>
+        </div>
+
+        <div class="form-group row">
+            <label class="col-md-3 col-form-label">@T("Plugins.ExternalAuth.SSO.Fields.OidcPostLogoutRedirectUri")</label>
+            <div class="col-md-9">
+                <div class="input-group">
+                    <input type="text" class="form-control" readonly value="@oidcPostLogoutUri" id="OidcPostLogoutRedirectUriField" />
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-default js-sso-copy" data-copy-target="OidcPostLogoutRedirectUriField">
+                            <i class="fas fa-clipboard"></i> @T("Admin.Common.Copy")
+                        </button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.OidcPostLogoutRedirectUri.Hint")</small>
+            </div>
+        </div>
+    </div>
+</div>

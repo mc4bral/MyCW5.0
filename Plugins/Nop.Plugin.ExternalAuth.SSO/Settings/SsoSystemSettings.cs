@@ -49,4 +49,10 @@ public class SsoSystemSettings : ISettings
     /// scheduled task. 0 = keep forever.
     /// </summary>
     public int AuditRetentionDays { get; set; } = 365;
+
+    /// <summary>
+    /// How many days before an IdP certificate, SP certificate or OIDC client secret expires that
+    /// System → Warnings starts warning about it. An expired one is always reported. Default 30.
+    /// </summary>
+    public int CertificateWarningDays { get; set; } = 30;
 }

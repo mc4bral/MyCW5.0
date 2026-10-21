@@ -44,6 +44,41 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
 
     #endregion
 
+    #region Utilities
+
+    private string ResolveAcsUrl(SsoConfigurationSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.AcsUrl))
+            return settings.AcsUrl;
+
+        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
+            ? settings.BaseUrl.TrimEnd('/')
+            : _webHelper.GetStoreLocation().TrimEnd('/');
+
+        return baseUrl + SSOAuthenticationDefaults.SamlAcsPath;
+    }
+
+    private Uri? ResolveSpLogoutUrl(SsoConfigurationSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.SpLogoutUrl)
+            && Uri.TryCreate(settings.SpLogoutUrl, UriKind.Absolute, out var explicitUrl))
+            return explicitUrl;
+
+        // Fall back to base + /saml/logout only when SAML is generally configured. We don't
+        // synthesise a logout URL if the admin hasn't configured the IdP SLO URL either —
+        // there's no point advertising SLO if the IdP can't initiate it.
+        if (string.IsNullOrWhiteSpace(settings.IdpSloUrl))
+            return null;
+
+        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
+            ? settings.BaseUrl.TrimEnd('/')
+            : _webHelper.GetStoreLocation().TrimEnd('/');
+
+        return new Uri(baseUrl + SSOAuthenticationDefaults.SamlLogoutPath);
+    }
+
+    #endregion
+
     #region Methods
 
     /// <inheritdoc />
@@ -106,41 +141,6 @@ public class SamlMetadataBuilder : ISamlMetadataBuilder
         entityDescriptor.SPSsoDescriptor = spDescriptor;
 
         return new Saml2Metadata(entityDescriptor).CreateMetadata().ToActionResult();
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private string ResolveAcsUrl(SsoConfigurationSettings settings)
-    {
-        if (!string.IsNullOrWhiteSpace(settings.AcsUrl))
-            return settings.AcsUrl;
-
-        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? settings.BaseUrl.TrimEnd('/')
-            : _webHelper.GetStoreLocation().TrimEnd('/');
-
-        return baseUrl + SSOAuthenticationDefaults.SamlAcsPath;
-    }
-
-    private Uri? ResolveSpLogoutUrl(SsoConfigurationSettings settings)
-    {
-        if (!string.IsNullOrWhiteSpace(settings.SpLogoutUrl)
-            && Uri.TryCreate(settings.SpLogoutUrl, UriKind.Absolute, out var explicitUrl))
-            return explicitUrl;
-
-        // Fall back to base + /saml/logout only when SAML is generally configured. We don't
-        // synthesise a logout URL if the admin hasn't configured the IdP SLO URL either —
-        // there's no point advertising SLO if the IdP can't initiate it.
-        if (string.IsNullOrWhiteSpace(settings.IdpSloUrl))
-            return null;
-
-        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? settings.BaseUrl.TrimEnd('/')
-            : _webHelper.GetStoreLocation().TrimEnd('/');
-
-        return new Uri(baseUrl + SSOAuthenticationDefaults.SamlLogoutPath);
     }
 
     #endregion

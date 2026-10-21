@@ -1,0 +1,71 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-oidc" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="Authority" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="Authority" asp-required="true" />
+            <span asp-validation-for="Authority"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="ClientId" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="ClientId" asp-required="true" />
+            <span asp-validation-for="ClientId"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="ClientSecret" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="ClientSecret" asp-required="true" html-attributes="@(new { type = "password", placeholder = Model.HasClientSecret ? T("Plugins.ExternalAuth.SSO.Common.SecretIsSet").Text : T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text })" />
+            @* The secret is never sent back to the browser; this tells the validator one is stored, so an empty field keeps it. *@
+            <input asp-for="HasClientSecret" type="hidden" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.ClientSecret.Hint")</small>
+            <span asp-validation-for="ClientSecret"></span>
+            @if (Model.HasClientSecret)
+            {
+                <div class="form-check mt-2 alert alert-warning py-1">
+                    <input asp-for="ClearClientSecret" class="form-check-input" />
+                    <label asp-for="ClearClientSecret" class="form-check-label">
+                        <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="ClientSecretExpiresOnUtc" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="ClientSecretExpiresOnUtc" />
+            <span asp-validation-for="ClientSecretExpiresOnUtc"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="CallbackPath" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="CallbackPath" />
+            <span asp-validation-for="CallbackPath"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="Scopes" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="Scopes" />
+            <span asp-validation-for="Scopes"></span>
+        </div>
+    </div>
+</div>

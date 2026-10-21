@@ -1,0 +1,55 @@
+/* Mock IdP login page (DEBUG builds only) — Views/MockSso/Login.cshtml. */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 460px;
+    width: 100%;
+    padding: 40px;
+}
+.logo { text-align: center; margin-bottom: 16px; }
+.logo svg { width: 108px; height: 24px; }
+h1 { font-size: 22px; font-weight: 600; color: #1b1b1b; margin-bottom: 6px; }
+.subtitle { font-size: 14px; color: #605e5c; margin-bottom: 18px; }
+.alert { padding: 10px 14px; border-radius: 4px; margin-bottom: 18px; font-size: 13px; line-height: 1.45; }
+.alert-warning { background-color: #fff4ce; border: 1px solid #ffb900; color: #323130; }
+.scenario-selector { margin-bottom: 18px; background: #f3f2f1; border-radius: 4px; padding: 14px; }
+.scenario-selector legend { font-size: 13px; font-weight: 600; color: #323130; margin-bottom: 8px; padding: 0; }
+.scenario-options { display: flex; flex-direction: column; gap: 6px; }
+.scenario-option { display: flex; align-items: flex-start; cursor: pointer; }
+.scenario-option input[type="radio"] { margin-right: 8px; margin-top: 3px; cursor: pointer; }
+.scenario-option span { font-size: 13px; color: #323130; }
+.form-group { margin-bottom: 14px; }
+.form-group.hidden { display: none; }
+label { display: block; font-size: 13px; font-weight: 600; color: #323130; margin-bottom: 4px; }
+input[type="email"],
+input[type="text"] {
+    width: 100%; padding: 8px 12px; font-size: 14px;
+    border: 1px solid #8a8886; border-radius: 2px; outline: none;
+    transition: border-color .15s;
+}
+input:focus { border-color: #0078d4; border-width: 2px; padding: 7px 11px; }
+.hint { font-size: 12px; color: #605e5c; margin-top: 4px; }
+.btn-primary {
+    width: 100%; background: #0078d4; color: white; border: none;
+    border-radius: 2px; padding: 11px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+}
+.btn-primary:hover { background: #106ebe; }
+.badge {
+    display: inline-block; padding: 3px 8px; border-radius: 3px;
+    font-size: 11px; font-weight: 600; background: #fff4ce; color: #8a8886;
+}
+.footer { margin-top: 18px; text-align: center; font-size: 12px; color: #605e5c; }
+.meta { margin-top: 14px; font-family: Consolas, "Courier New", monospace; font-size: 11px; color: #605e5c; background: #faf9f8; border: 1px solid #edebe9; border-radius: 4px; padding: 10px; word-break: break-all; }
+.ms-logo-f { fill: #f25022; } .ms-logo-g { fill: #7fba00; } .ms-logo-b { fill: #00a4ef; } .ms-logo-y { fill: #ffb900; }

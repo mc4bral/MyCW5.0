@@ -4,7 +4,6 @@ using Nop.Plugin.ExternalAuth.SSO.Components;
 using Nop.Plugin.ExternalAuth.SSO.Constants;
 using Nop.Plugin.ExternalAuth.SSO.Infrastructure;
 using Nop.Plugin.ExternalAuth.SSO.Security;
-using Nop.Plugin.ExternalAuth.SSO.Services;
 using Nop.Plugin.ExternalAuth.SSO.Settings;
 using Nop.Services.Authentication.External;
 using Nop.Services.Configuration;
@@ -45,7 +44,6 @@ public class SSOAuthenticationMethod : BasePlugin, IExternalAuthenticationMethod
     protected readonly IPermissionService _permissionService;
     protected readonly IScheduleTaskService _scheduleTaskService;
     protected readonly ISettingService _settingService;
-    protected readonly ISsoSecretsService _secretsService;
     protected readonly IWebHelper _webHelper;
 
     #endregion
@@ -58,7 +56,6 @@ public class SSOAuthenticationMethod : BasePlugin, IExternalAuthenticationMethod
         IPermissionService permissionService,
         IScheduleTaskService scheduleTaskService,
         ISettingService settingService,
-        ISsoSecretsService secretsService,
         IWebHelper webHelper)
     {
         _customerService = customerService;
@@ -66,129 +63,7 @@ public class SSOAuthenticationMethod : BasePlugin, IExternalAuthenticationMethod
         _permissionService = permissionService;
         _scheduleTaskService = scheduleTaskService;
         _settingService = settingService;
-        _secretsService = secretsService;
         _webHelper = webHelper;
-    }
-
-    #endregion
-
-    #region Methods
-
-    /// <summary>
-    /// Returns the URL of the plugin's configuration page in the admin area.
-    /// </summary>
-    public override string GetConfigurationPageUrl()
-        => $"{_webHelper.GetStoreLocation()}Admin/SsoConfiguration/Configure";
-
-    /// <summary>
-    /// Public view component used by nopCommerce to render the "Sign in with Microsoft"
-    /// button on the standard login page. Returns empty content when SSO is disabled or
-    /// the protocol is set to <c>Off</c> for the current store (see
-    /// <see cref="SSOAuthenticationViewComponent"/>).
-    /// </summary>
-    public Type GetPublicViewComponent()
-        => typeof(SSOAuthenticationViewComponent);
-
-    /// <summary>
-    /// Install the plugin. Seeds default settings, registers permissions, adds locale
-    /// resources, then defers to <c>base.InstallAsync</c> which runs the FluentMigrator
-    /// schema migration.
-    /// </summary>
-    public override async Task InstallAsync()
-    {
-        // Default per-store config — disabled until an admin completes the Configure page.
-        await _settingService.SaveSettingAsync(new SsoConfigurationSettings());
-
-        // System-wide bypass settings — empty token disables the bypass entirely.
-        await _settingService.SaveSettingAsync(new SsoSystemSettings());
-
-        // Discover and insert any IPermissionConfigManager-declared permissions not yet in PermissionRecord.
-        // This picks up ExternalAuthSSOPermissionConfigManager automatically.
-        await _permissionService.InsertPermissionsAsync();
-
-        await AddOrUpdateLocaleResourcesAsync();
-
-        await EnsureAuditRetentionTaskAsync();
-
-        await base.InstallAsync();
-    }
-
-    /// <summary>
-    /// Update the plugin. Refreshes locale resources when the target version includes a
-    /// <c>DATA</c> marker (same convention as <c>OdooIntegrationPlugin</c>).
-    /// </summary>
-    /// <param name="currentVersion">Current installed version.</param>
-    /// <param name="targetVersion">Target version being upgraded to.</param>
-    public override async Task UpdateAsync(string currentVersion, string targetVersion)
-    {
-        if (targetVersion.Contains("DATA"))
-            await AddOrUpdateLocaleResourcesAsync();
-
-        // CustomAttributesJson was removed (no extension ever read it). Drop its strings and
-        // its setting rows, which nop would otherwise keep as orphans.
-        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Fields.CustomAttributesJson");
-        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Cards.CustomAttributes");
-        var orphanSettings = (await _settingService.GetAllSettingsAsync())
-            .Where(s => s.Name.Equals("ssoconfigurationsettings.customattributesjson", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        foreach (var orphan in orphanSettings)
-            await _settingService.DeleteSettingAsync(orphan);
-
-        // AccessSsoPlugin was declared but never checked; remove its record.
-        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.RETIRED_ACCESS_SSO_PLUGIN);
-
-        // Settings retyped on 2026-10-19 (review item R8).
-        await ConvertRetypedSettingsAsync();
-
-        // Secrets moved to one encryption layer on 2026-10-19 (review item R9).
-        await ReprotectLegacySecretsAsync();
-
-        // Audit retention task (2026-10-19).
-        await EnsureAuditRetentionTaskAsync();
-        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Fields.DefaultRoleSystemName");
-
-        // Strings nothing displayed (removed from SsoLocaleResources, 2026-10-19).
-        foreach (var deadKey in new[]
-                 {
-                     "Plugins.ExternalAuth.SSO.Permissions.AccessSsoPlugin",
-                     "Plugins.ExternalAuth.SSO.Button.SignInWithMicrosoft",
-                     "Plugins.ExternalAuth.SSO.Login.SamlNotYetAvailable",
-                     "Plugins.ExternalAuth.SSO.Login.AdminAccountBlocked",
-                     "Plugins.ExternalAuth.SSO.Login.DomainNotAllowed",
-                     "Plugins.ExternalAuth.SSO.Saml.SignatureFailed",
-                     "Plugins.ExternalAuth.SSO.Saml.AudienceMismatch",
-                     "Plugins.ExternalAuth.SSO.Saml.InResponseToMismatch",
-                     "Plugins.ExternalAuth.SSO.Cards.Saml",
-                     "Plugins.ExternalAuth.SSO.Cards.Redirects",
-                     "Plugins.ExternalAuth.SSO.Cards.System"
-                 })
-        {
-            // DeleteLocaleResourcesAsync matches by prefix, so Cards.System also takes Cards.System.Hint.
-            await _localizationService.DeleteLocaleResourcesAsync(deadKey);
-        }
-
-        await base.UpdateAsync(currentVersion, targetVersion);
-    }
-
-    /// <summary>
-    /// Uninstall the plugin. Removes permissions, settings, locale resources, then defers
-    /// to <c>base.UninstallAsync</c> which runs the reverse of the schema migration.
-    /// </summary>
-    public override async Task UninstallAsync()
-    {
-        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.RETIRED_ACCESS_SSO_PLUGIN);
-        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS);
-
-        await _settingService.DeleteSettingAsync<SsoConfigurationSettings>();
-        await _settingService.DeleteSettingAsync<SsoSystemSettings>();
-
-        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO");
-
-        var retentionTask = await _scheduleTaskService.GetTaskByTypeAsync(SSOAuthenticationDefaults.AuditRetentionTaskType);
-        if (retentionTask is not null)
-            await _scheduleTaskService.DeleteTaskAsync(retentionTask);
-
-        await base.UninstallAsync();
     }
 
     #endregion
@@ -196,57 +71,36 @@ public class SSOAuthenticationMethod : BasePlugin, IExternalAuthenticationMethod
     #region Utilities
 
     /// <summary>
-    /// Register the daily audit-retention task (<see cref="Services.SsoAuditRetentionTask"/>) if it is
-    /// not there yet. Existing tasks keep their schedule and enabled state, as an admin may have
-    /// changed them under System → Schedule tasks.
+    /// The plugin's daily scheduled tasks: audit-log retention (<see cref="Services.SsoAuditRetentionTask"/>)
+    /// and the certificate and metadata check (<see cref="Services.SsoDailyCheckTask"/>).
     /// </summary>
-    private async Task EnsureAuditRetentionTaskAsync()
-    {
-        if (await _scheduleTaskService.GetTaskByTypeAsync(SSOAuthenticationDefaults.AuditRetentionTaskType) is not null)
-            return;
-
-        await _scheduleTaskService.InsertTaskAsync(new ScheduleTask
-        {
-            Name = SSOAuthenticationDefaults.AuditRetentionTaskName,
-            Type = SSOAuthenticationDefaults.AuditRetentionTaskType,
-            Seconds = 24 * 60 * 60,
-            Enabled = true,
-            LastEnabledUtc = DateTime.UtcNow,
-            StopOnError = false
-        });
-    }
+    private static readonly (string name, string type)[] _dailyTasks =
+    [
+        (SSOAuthenticationDefaults.AuditRetentionTaskName, SSOAuthenticationDefaults.AuditRetentionTaskType),
+        (SSOAuthenticationDefaults.DailyCheckTaskName, SSOAuthenticationDefaults.DailyCheckTaskType)
+    ];
 
     /// <summary>
-    /// Rewrite secrets stored in the legacy two-layer format (nop's <c>IEncryptionService</c> around
-    /// Data Protection, before 2026-10-19) in the current single-layer format, for every store.
-    /// Values already current are left alone, so it is safe to run more than once.
+    /// Register the plugin's daily tasks that are not there yet. Existing tasks keep their schedule
+    /// and enabled state, as an admin may have changed them under System → Schedule tasks.
     /// </summary>
-    private async Task ReprotectLegacySecretsAsync()
+    private async Task EnsureScheduledTasksAsync()
     {
-        // Every setting row the secrets service protects, for every store.
-        var secretKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        foreach (var (name, type) in _dailyTasks)
         {
-            "ssoconfigurationsettings.clientsecret",
-            "ssoconfigurationsettings.idpcertificatebase64",
-            "ssoconfigurationsettings.sppfxbase64",
-            "ssoconfigurationsettings.sppfxpassword",
-            "ssosystemsettings.ssobypasstoken"
-        };
+            if (await _scheduleTaskService.GetTaskByTypeAsync(type) is not null)
+                continue;
 
-        var legacyRows = (await _settingService.GetAllSettingsAsync())
-            .Where(s => secretKeys.Contains(s.Name) && !_secretsService.IsCurrentFormat(s.Value))
-            .ToList();
-
-        foreach (var row in legacyRows)
-        {
-            // A value this server cannot decrypt (keys changed) stays as it is: rewriting it would
-            // destroy it, and the admin has to re-enter it either way.
-            if (_secretsService.TryUnprotect(row.Value, out var plaintext))
-                await _settingService.SetSettingAsync(row.Name, _secretsService.Protect(plaintext), row.StoreId, false);
+            await _scheduleTaskService.InsertTaskAsync(new ScheduleTask
+            {
+                Name = name,
+                Type = type,
+                Seconds = 24 * 60 * 60,
+                Enabled = true,
+                LastEnabledUtc = DateTime.UtcNow,
+                StopOnError = false
+            });
         }
-
-        if (legacyRows.Count > 0)
-            await _settingService.ClearCacheAsync();
     }
 
     /// <summary>
@@ -304,6 +158,127 @@ public class SSOAuthenticationMethod : BasePlugin, IExternalAuthenticationMethod
     private async Task AddOrUpdateLocaleResourcesAsync()
     {
         await _localizationService.AddOrUpdateLocaleResourceAsync(SsoLocaleResources.All);
+    }
+
+    #endregion
+
+    #region Methods
+
+    /// <summary>
+    /// Returns the URL of the plugin's configuration page in the admin area.
+    /// </summary>
+    public override string GetConfigurationPageUrl()
+        => $"{_webHelper.GetStoreLocation()}Admin/SsoConfiguration/Configure";
+
+    /// <summary>
+    /// Public view component used by nopCommerce to render the "Sign in with Microsoft"
+    /// button on the standard login page. Returns empty content when SSO is disabled or
+    /// the protocol is set to <c>Off</c> for the current store (see
+    /// <see cref="SSOAuthenticationViewComponent"/>).
+    /// </summary>
+    public Type GetPublicViewComponent()
+        => typeof(SSOAuthenticationViewComponent);
+
+    /// <summary>
+    /// Install the plugin. Seeds default settings, registers permissions, adds locale
+    /// resources, then defers to <c>base.InstallAsync</c> which runs the FluentMigrator
+    /// schema migration.
+    /// </summary>
+    public override async Task InstallAsync()
+    {
+        // Default per-store config — disabled until an admin completes the Configure page.
+        await _settingService.SaveSettingAsync(new SsoConfigurationSettings());
+
+        // System-wide bypass settings — empty token disables the bypass entirely.
+        await _settingService.SaveSettingAsync(new SsoSystemSettings());
+
+        // Discover and insert any IPermissionConfigManager-declared permissions not yet in PermissionRecord.
+        // This picks up ExternalAuthSSOPermissionConfigManager automatically.
+        await _permissionService.InsertPermissionsAsync();
+
+        await AddOrUpdateLocaleResourcesAsync();
+
+        await EnsureScheduledTasksAsync();
+
+        await base.InstallAsync();
+    }
+
+    /// <summary>
+    /// Update the plugin. Refreshes locale resources when the target version includes a
+    /// <c>DATA</c> marker (same convention as <c>OdooIntegrationPlugin</c>).
+    /// </summary>
+    /// <param name="currentVersion">Current installed version.</param>
+    /// <param name="targetVersion">Target version being upgraded to.</param>
+    public override async Task UpdateAsync(string currentVersion, string targetVersion)
+    {
+        if (targetVersion.Contains("DATA"))
+            await AddOrUpdateLocaleResourcesAsync();
+
+        // CustomAttributesJson was removed (no extension ever read it). Drop its strings and
+        // its setting rows, which nop would otherwise keep as orphans.
+        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Fields.CustomAttributesJson");
+        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Cards.CustomAttributes");
+        var orphanSettings = (await _settingService.GetAllSettingsAsync())
+            .Where(s => s.Name.Equals("ssoconfigurationsettings.customattributesjson", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var orphan in orphanSettings)
+            await _settingService.DeleteSettingAsync(orphan);
+
+        // AccessSsoPlugin was declared but never checked; remove its record.
+        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.RETIRED_ACCESS_SSO_PLUGIN);
+
+        // Settings retyped on 2026-10-19 (review item R8).
+        await ConvertRetypedSettingsAsync();
+
+        // Daily tasks: audit retention (2026-10-19), certificate and metadata check (2026-10-20).
+        await EnsureScheduledTasksAsync();
+        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO.Fields.DefaultRoleSystemName");
+
+        // Strings nothing displayed (removed from SsoLocaleResources, 2026-10-19).
+        foreach (var deadKey in new[]
+                 {
+                     "Plugins.ExternalAuth.SSO.Permissions.AccessSsoPlugin",
+                     "Plugins.ExternalAuth.SSO.Button.SignInWithMicrosoft",
+                     "Plugins.ExternalAuth.SSO.Login.SamlNotYetAvailable",
+                     "Plugins.ExternalAuth.SSO.Login.AdminAccountBlocked",
+                     "Plugins.ExternalAuth.SSO.Login.DomainNotAllowed",
+                     "Plugins.ExternalAuth.SSO.Saml.SignatureFailed",
+                     "Plugins.ExternalAuth.SSO.Saml.AudienceMismatch",
+                     "Plugins.ExternalAuth.SSO.Saml.InResponseToMismatch",
+                     "Plugins.ExternalAuth.SSO.Cards.Saml",
+                     "Plugins.ExternalAuth.SSO.Cards.Redirects",
+                     "Plugins.ExternalAuth.SSO.Cards.System"
+                 })
+        {
+            // DeleteLocaleResourcesAsync matches by prefix, so Cards.System also takes Cards.System.Hint.
+            await _localizationService.DeleteLocaleResourcesAsync(deadKey);
+        }
+
+        await base.UpdateAsync(currentVersion, targetVersion);
+    }
+
+    /// <summary>
+    /// Uninstall the plugin. Removes permissions, settings, locale resources, then defers
+    /// to <c>base.UninstallAsync</c> which runs the reverse of the schema migration.
+    /// </summary>
+    public override async Task UninstallAsync()
+    {
+        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.RETIRED_ACCESS_SSO_PLUGIN);
+        await _permissionService.DeletePermissionAsync(ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS);
+
+        await _settingService.DeleteSettingAsync<SsoConfigurationSettings>();
+        await _settingService.DeleteSettingAsync<SsoSystemSettings>();
+
+        await _localizationService.DeleteLocaleResourcesAsync("Plugins.ExternalAuth.SSO");
+
+        foreach (var (_, type) in _dailyTasks)
+        {
+            var task = await _scheduleTaskService.GetTaskByTypeAsync(type);
+            if (task is not null)
+                await _scheduleTaskService.DeleteTaskAsync(task);
+        }
+
+        await base.UninstallAsync();
     }
 
     #endregion

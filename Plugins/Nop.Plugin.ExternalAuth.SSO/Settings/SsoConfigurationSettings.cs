@@ -79,6 +79,13 @@ public class SsoConfigurationSettings : ISettings
     public string ClientSecret { get; set; } = string.Empty;
 
     /// <summary>
+    /// When the client secret expires (UTC date), as shown on the IdP's app registration. Entra does
+    /// not expose it without Microsoft Graph, so the admin types it. Null = not tracked. Drives the
+    /// expiry warning under System → Warnings.
+    /// </summary>
+    public DateTime? ClientSecretExpiresOnUtc { get; set; }
+
+    /// <summary>
     /// Callback path the OIDC handler listens on. Defaults to <c>/signin-microsoft</c>.
     /// </summary>
     public string CallbackPath { get; set; } = "/signin-microsoft";
@@ -113,10 +120,32 @@ public class SsoConfigurationSettings : ISettings
     public string IdpCertificateBase64 { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional URL to the IdP federation metadata XML; when set, <c>IIdpMetadataImporter</c>
-    /// auto-refreshes IdP fields from it.
+    /// Optional URL to the IdP federation metadata XML. The daily "SSO certificate and metadata check"
+    /// and Test connection compare the IdP fields with it; <see cref="AutoApplyIdpMetadata"/> lets the
+    /// daily check apply what differs.
     /// </summary>
     public string IdpMetadataUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Let the daily check write the IdP entity ID, SSO / SLO URLs and signing certificate from
+    /// <see cref="IdpMetadataUrl"/> when they differ — so a certificate rollover at the IdP does not
+    /// break sign-in. Off (default): a difference is only reported. The metadata's own signature is
+    /// not verified; trust rests on the HTTPS URL, so turn it on only for an IdP you trust (e.g. Entra).
+    /// </summary>
+    public bool AutoApplyIdpMetadata { get; set; }
+
+    /// <summary>
+    /// When the IdP metadata was last compared (daily check or Test connection). Written by the
+    /// plugin, not on the Configure page; null = never.
+    /// </summary>
+    public DateTime? IdpMetadataCheckedOnUtc { get; set; }
+
+    /// <summary>
+    /// What the last comparison found different, in words ("signing certificate, SSO URL") or why it
+    /// could not run; empty = everything matched. Written by the plugin; cleared when an admin
+    /// changes the IdP fields, since the comparison is then out of date.
+    /// </summary>
+    public string IdpMetadataDifferences { get; set; } = string.Empty;
 
     /// <summary>
     /// SP <c>EntityID</c>.

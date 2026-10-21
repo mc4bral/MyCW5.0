@@ -63,6 +63,43 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
 
     #endregion
 
+    #region Utilities
+
+    private static bool IsCustomerLoginPost(ActionExecutingContext context)
+    {
+        var routeValues = context.RouteData.Values;
+        var controller = routeValues["controller"] as string;
+        var action = routeValues["action"] as string;
+
+        return HttpMethods.IsPost(context.HttpContext.Request.Method)
+            && string.Equals(controller, "Customer", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(action, "Login", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static HashSet<string> ParseRoleSystemNames(string csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ClearBypassCookie(HttpResponse response)
+    {
+        response.Cookies.Delete(
+            SSOAuthenticationDefaults.BypassCookieName,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = response.HttpContext.Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true
+            });
+    }
+
+    #endregion
+
     #region IAsyncActionFilter
 
     /// <inheritdoc />
@@ -117,43 +154,6 @@ public class LocalLoginEnforcementFilter : IAsyncActionFilter
 
         // Cookie preserved on purpose — see XML doc.
         executed.Result = new RedirectResult("/login");
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private static bool IsCustomerLoginPost(ActionExecutingContext context)
-    {
-        var routeValues = context.RouteData.Values;
-        var controller = routeValues["controller"] as string;
-        var action = routeValues["action"] as string;
-
-        return HttpMethods.IsPost(context.HttpContext.Request.Method)
-            && string.Equals(controller, "Customer", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(action, "Login", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static HashSet<string> ParseRoleSystemNames(string csv)
-    {
-        if (string.IsNullOrWhiteSpace(csv))
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static void ClearBypassCookie(HttpResponse response)
-    {
-        response.Cookies.Delete(
-            SSOAuthenticationDefaults.BypassCookieName,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = response.HttpContext.Request.IsHttps,
-                SameSite = SameSiteMode.Lax,
-                IsEssential = true
-            });
     }
 
     #endregion

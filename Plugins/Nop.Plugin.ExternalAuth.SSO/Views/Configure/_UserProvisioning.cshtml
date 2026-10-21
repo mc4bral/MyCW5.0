@@ -1,0 +1,51 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-provisioning" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AutoRegister" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AutoRegister" />
+            <span asp-validation-for="AutoRegister"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="DefaultRoleIds" />
+        </div>
+        <div class="col-md-9">
+            <nop-select asp-for="DefaultRoleIds" asp-items="Model.AvailableCustomerRoles" asp-multiple="true" />
+        </div>
+    </div>
+
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AllowedEmailDomains" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AllowedEmailDomains" />
+            <span asp-validation-for="AllowedEmailDomains"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="RefreshRolesOnLogin" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="RefreshRolesOnLogin" />
+            <span asp-validation-for="RefreshRolesOnLogin"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="RedirectLoginToSso" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="RedirectLoginToSso" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.RedirectLoginToSso.Hint")</small>
+            <span asp-validation-for="RedirectLoginToSso"></span>
+        </div>
+    </div>
+</div>

@@ -161,10 +161,12 @@ public class SsoAccountsController : SsoAdminControllerBase
     [CheckPermission(ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS)]
     public virtual async Task<IActionResult> AddSsoAccount(AddSsoAccountModel model)
     {
-        if (model.StoreId <= 0)
+        // AddSsoAccountModelValidator: the store must be one the picker offers.
+        if (!ModelState.IsValid)
         {
-            _notificationService.WarningNotification("Please pick a store from the dropdown.");
-            return RedirectToAction(nameof(AddSsoAccount));
+            var redisplay = await _storeSummaryFactory.PrepareAddModelAsync();
+            redisplay.StoreId = model.StoreId;
+            return PluginView("AddSsoAccount", redisplay);
         }
 
         await _configurationModelFactory.SetStoreScopeAsync(model.StoreId);

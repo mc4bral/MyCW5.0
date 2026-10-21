@@ -1,0 +1,10 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-test" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <p class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Hint")</p>
+    <button type="button" class="btn btn-info" id="btnTestSsoConnection">
+        <i class="fas fa-bolt"></i> @T("Plugins.ExternalAuth.SSO.Cards.TestConnection.Button")
+    </button>
+    <div id="TestSsoConnectionResult" class="alert mt-3" style="display:none;"></div>
+</div>

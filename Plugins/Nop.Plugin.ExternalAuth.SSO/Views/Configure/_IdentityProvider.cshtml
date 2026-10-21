@@ -1,0 +1,126 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-idp" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+
+    @* IdP metadata import lives here so admins can prefill the four IdP fields from federation XML. *@
+    <div class="card card-default border-info mb-3">
+        <div class="card-header bg-info text-white">
+            <i class="fas fa-file-import"></i>
+            @T("Plugins.ExternalAuth.SSO.IdpMetadata.Title")
+        </div>
+        <div class="card-body">
+            <p class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.IdpMetadata.Hint")</p>
+            <div class="form-group row">
+                <label class="col-md-3 col-form-label" for="IdpMetadataUrlImport">
+                    @T("Plugins.ExternalAuth.SSO.IdpMetadata.UrlLabel")
+                </label>
+                <div class="col-md-9">
+                    <input type="url" class="form-control" id="IdpMetadataUrlImport"
+                           placeholder="https://login.microsoftonline.com/&lt;tenant&gt;/federationmetadata/2007-06/federationmetadata.xml" />
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-md-3 col-form-label" for="IdpMetadataFileImport">
+                    @T("Plugins.ExternalAuth.SSO.IdpMetadata.FileLabel")
+                </label>
+                <div class="col-md-9">
+                    <input type="file" class="form-control-file" id="IdpMetadataFileImport" accept=".xml,application/xml,text/xml" />
+                </div>
+            </div>
+            <div class="form-group row">
+                <div class="col-md-9 offset-md-3">
+                    <button type="button" class="btn btn-info" id="btnImportIdpMetadata">
+                        <i class="fas fa-download"></i>
+                        @T("Plugins.ExternalAuth.SSO.IdpMetadata.ImportButton")
+                    </button>
+                    <span id="IdpMetadataImportStatus" class="ml-3"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="IdpSsoUrl" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="IdpSsoUrl" asp-required="true" />
+            <span asp-validation-for="IdpSsoUrl"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="IdpEntityId" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="IdpEntityId" asp-required="true" />
+            <span asp-validation-for="IdpEntityId"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="IdpCertificateBase64" />
+        </div>
+        <div class="col-md-9">
+            <nop-textarea asp-for="IdpCertificateBase64" asp-required="true" html-attributes="@(new { rows = "4", placeholder = string.IsNullOrEmpty(Model.IdpCertificatePreview) ? T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text : Model.IdpCertificatePreview })" />
+            @* The certificate is never sent back to the browser; this tells the validator one is stored, so an empty field keeps it. *@
+            <input asp-for="HasIdpCertificate" type="hidden" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.IdpCertificateBase64.Hint")</small>
+            <span asp-validation-for="IdpCertificateBase64"></span>
+            @if (!string.IsNullOrEmpty(Model.IdpCertificatePreview))
+            {
+                <div class="form-check mt-2 alert alert-warning py-1">
+                    <input asp-for="ClearIdpCertificate" class="form-check-input" />
+                    <label asp-for="ClearIdpCertificate" class="form-check-label">
+                        <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredIdpCertOnSave")
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="IdpSloUrl" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="IdpSloUrl" />
+            <span asp-validation-for="IdpSloUrl"></span>
+            @if (string.IsNullOrWhiteSpace(Model.IdpSloUrl))
+            {
+                <div class="alert alert-warning mt-2 mb-0">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    @T("Plugins.ExternalAuth.SSO.Cards.IdentityProvider.SloNotConfigured")
+                </div>
+            }
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="IdpMetadataUrl" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="IdpMetadataUrl" />
+            <span asp-validation-for="IdpMetadataUrl"></span>
+            @if (Model.IdpMetadataCheckedOnUtc.HasValue)
+            {
+                @* Written by the daily "SSO certificate and metadata check" and by Test connection. *@
+                <small class="form-text @(string.IsNullOrEmpty(Model.IdpMetadataDifferences) ? "text-success" : "text-danger")">
+                    @T("Plugins.ExternalAuth.SSO.Fields.IdpMetadataCheck.Last", Model.IdpMetadataCheckedOnUtc.Value.ToString("yyyy-MM-dd HH:mm") + " UTC")
+                    @(string.IsNullOrEmpty(Model.IdpMetadataDifferences)
+                        ? T("Plugins.ExternalAuth.SSO.Fields.IdpMetadataCheck.Matches").Text
+                        : T("Plugins.ExternalAuth.SSO.Fields.IdpMetadataCheck.Differs", Model.IdpMetadataDifferences).Text)
+                </small>
+            }
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AutoApplyIdpMetadata" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AutoApplyIdpMetadata" />
+            <span asp-validation-for="AutoApplyIdpMetadata"></span>
+        </div>
+    </div>
+</div>

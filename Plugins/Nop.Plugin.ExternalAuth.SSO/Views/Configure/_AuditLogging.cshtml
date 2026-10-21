@@ -1,0 +1,36 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-audit" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        @Html.Raw(T("Plugins.ExternalAuth.SSO.Cards.AuditLogging.InfoBody"))
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="EnableAuditLogging" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="EnableAuditLogging" />
+            <span asp-validation-for="EnableAuditLogging"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AuditRetentionDays" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AuditRetentionDays" />
+            <span asp-validation-for="AuditRetentionDays"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="CertificateWarningDays" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="CertificateWarningDays" />
+            <span asp-validation-for="CertificateWarningDays"></span>
+        </div>
+    </div>
+</div>

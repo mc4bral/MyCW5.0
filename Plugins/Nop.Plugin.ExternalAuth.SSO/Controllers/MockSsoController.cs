@@ -63,54 +63,6 @@ public class MockSsoController : BasePluginController
 
     #endregion
 
-    #region Methods
-
-    /// <summary>
-    /// GET /mocksso/login — renders the mock IdP UI. <paramref name="protocol"/> drives
-    /// which complete-endpoint the form posts to (<c>saml</c> or <c>oidc</c>).
-    /// </summary>
-    [HttpGet("login")]
-    public async Task<IActionResult> Login(string? protocol, string? returnUrl)
-    {
-        if (!await IsMockEnabledAsync())
-            return NotFound();
-
-        var resolvedProtocol = string.Equals(protocol, MockSsoDefaults.ProtocolOidc, StringComparison.OrdinalIgnoreCase)
-            ? MockSsoDefaults.ProtocolOidc
-            : MockSsoDefaults.ProtocolSaml;
-
-        var model = new MockLoginModel
-        {
-            Scenario = SsoMockScenarios.SuccessExisting,
-            ReturnUrl = returnUrl ?? string.Empty
-        };
-
-        ViewBag.Protocol = resolvedProtocol;
-        ViewBag.CompletePath = resolvedProtocol == MockSsoDefaults.ProtocolOidc
-            ? MockSsoDefaults.OidcCompletePath
-            : MockSsoDefaults.SamlCompletePath;
-
-        return View("~/Plugins/ExternalAuth.SSO/Views/MockSso/Login.cshtml", model);
-    }
-
-    /// <summary>
-    /// POST /mocksso/saml/complete — receives the mock SAML form, builds a SAML-flavoured
-    /// <see cref="ClaimsPrincipal"/>, and delegates to the provisioning service.
-    /// </summary>
-    [HttpPost("saml/complete")]
-    public Task<IActionResult> SamlComplete(MockLoginModel model)
-        => CompleteAsync(model, SsoProtocolNames.Saml2);
-
-    /// <summary>
-    /// POST /mocksso/oidc/complete — receives the mock OIDC form, builds an OIDC-flavoured
-    /// <see cref="ClaimsPrincipal"/>, and delegates to the provisioning service.
-    /// </summary>
-    [HttpPost("oidc/complete")]
-    public Task<IActionResult> OidcComplete(MockLoginModel model)
-        => CompleteAsync(model, SsoProtocolNames.Oidc);
-
-    #endregion
-
     #region Utilities
 
     /// <summary>
@@ -217,6 +169,54 @@ public class MockSsoController : BasePluginController
         var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
         return settings.EnableMockMode;
     }
+
+    #endregion
+
+    #region Methods
+
+    /// <summary>
+    /// GET /mocksso/login — renders the mock IdP UI. <paramref name="protocol"/> drives
+    /// which complete-endpoint the form posts to (<c>saml</c> or <c>oidc</c>).
+    /// </summary>
+    [HttpGet("login")]
+    public async Task<IActionResult> Login(string? protocol, string? returnUrl)
+    {
+        if (!await IsMockEnabledAsync())
+            return NotFound();
+
+        var resolvedProtocol = string.Equals(protocol, MockSsoDefaults.ProtocolOidc, StringComparison.OrdinalIgnoreCase)
+            ? MockSsoDefaults.ProtocolOidc
+            : MockSsoDefaults.ProtocolSaml;
+
+        var model = new MockLoginModel
+        {
+            Scenario = SsoMockScenarios.SuccessExisting,
+            ReturnUrl = returnUrl ?? string.Empty
+        };
+
+        ViewBag.Protocol = resolvedProtocol;
+        ViewBag.CompletePath = resolvedProtocol == MockSsoDefaults.ProtocolOidc
+            ? MockSsoDefaults.OidcCompletePath
+            : MockSsoDefaults.SamlCompletePath;
+
+        return View("~/Plugins/ExternalAuth.SSO/Views/MockSso/Login.cshtml", model);
+    }
+
+    /// <summary>
+    /// POST /mocksso/saml/complete — receives the mock SAML form, builds a SAML-flavoured
+    /// <see cref="ClaimsPrincipal"/>, and delegates to the provisioning service.
+    /// </summary>
+    [HttpPost("saml/complete")]
+    public Task<IActionResult> SamlComplete(MockLoginModel model)
+        => CompleteAsync(model, SsoProtocolNames.Saml2);
+
+    /// <summary>
+    /// POST /mocksso/oidc/complete — receives the mock OIDC form, builds an OIDC-flavoured
+    /// <see cref="ClaimsPrincipal"/>, and delegates to the provisioning service.
+    /// </summary>
+    [HttpPost("oidc/complete")]
+    public Task<IActionResult> OidcComplete(MockLoginModel model)
+        => CompleteAsync(model, SsoProtocolNames.Oidc);
 
     #endregion
 }

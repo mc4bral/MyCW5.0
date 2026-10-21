@@ -33,10 +33,11 @@ public class NopStartup : INopStartup
     /// </summary>
     public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
-        // Shared: secrets at rest, audit log, per-IP rate limiter.
+        // Shared: secrets at rest, audit log, per-IP rate limiter, certificate / metadata findings.
         services.AddScoped<ISsoSecretsService, SsoSecretsService>();
         services.AddScoped<ISsoEventService, SsoEventService>();
         services.AddScoped<ISsoRateLimiter, SsoRateLimiter>();
+        services.AddScoped<ISsoMonitoringService, SsoMonitoringService>();
 
         // Sign-in: one provisioning path for both protocols, and the group/app-role → customer-role
         // resolver it calls (Administrators are refused there whatever the mappings say).

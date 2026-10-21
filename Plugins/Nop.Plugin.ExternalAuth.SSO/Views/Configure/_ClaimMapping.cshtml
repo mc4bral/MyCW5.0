@@ -1,0 +1,59 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-claims" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="EmailClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="EmailClaimType" />
+            <span asp-validation-for="EmailClaimType"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="UsernameClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="UsernameClaimType" />
+            <span asp-validation-for="UsernameClaimType"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="FirstNameClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="FirstNameClaimType" />
+            <span asp-validation-for="FirstNameClaimType"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="LastNameClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="LastNameClaimType" />
+            <span asp-validation-for="LastNameClaimType"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="GroupsClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="GroupsClaimType" />
+            <span asp-validation-for="GroupsClaimType"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="RolesClaimType" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="RolesClaimType" />
+            <span asp-validation-for="RolesClaimType"></span>
+        </div>
+    </div>
+</div>

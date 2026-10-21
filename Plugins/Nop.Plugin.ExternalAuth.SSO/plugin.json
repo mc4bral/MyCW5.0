@@ -2,7 +2,7 @@
   "Group": "ExternalAuth methods",
   "FriendlyName": "SSO Authentication",
   "SystemName": "ExternalAuth.SSO",
-  "Version": "2026_10_19_DATA_0.7",
+  "Version": "2026_10_20_DATA_0.9",
   "SupportedVersions": [ "5.00" ],
   "Author": "Total Image Group",
   "DisplayOrder": 1,

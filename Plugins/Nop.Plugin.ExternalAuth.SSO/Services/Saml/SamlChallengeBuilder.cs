@@ -48,6 +48,39 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
 
     #endregion
 
+    #region Utilities
+
+    private string ResolveAcsUrl(SsoConfigurationSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.AcsUrl))
+            return settings.AcsUrl;
+
+        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
+            ? settings.BaseUrl.TrimEnd('/')
+            : _webHelper.GetStoreLocation().TrimEnd('/');
+
+        return baseUrl + SSOAuthenticationDefaults.SamlAcsPath;
+    }
+
+    private void IssueCorrelationCookie(string requestId, string? returnUrl)
+    {
+        var response = _httpContextAccessor.HttpContext?.Response;
+        if (response is null) return;
+
+        // Pack request ID + returnUrl into the cookie value as a pipe-delimited tuple.
+        // No need for a full key-value codec; the two parts are short and well-formed.
+        var safeReturnUrl = returnUrl ?? string.Empty;
+        var cookieValue = $"{requestId}|{Uri.EscapeDataString(safeReturnUrl)}";
+
+        // SameSite=None over HTTPS: the IdP returns with a cross-site POST (see SamlCookieOptions).
+        response.Cookies.Append(
+            SSOAuthenticationDefaults.SamlCorrelationCookieName,
+            cookieValue,
+            SamlCookieOptions.For(response.HttpContext.Request, SSOAuthenticationDefaults.SamlCorrelationCookieLifetime));
+    }
+
+    #endregion
+
     #region Methods
 
     /// <inheritdoc />
@@ -105,39 +138,6 @@ public class SamlChallengeBuilder : ISamlChallengeBuilder
         var redirectBinding = new Saml2RedirectBinding();
         redirectBinding.Bind(authnRequest);
         return redirectBinding.ToActionResult();
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private string ResolveAcsUrl(SsoConfigurationSettings settings)
-    {
-        if (!string.IsNullOrWhiteSpace(settings.AcsUrl))
-            return settings.AcsUrl;
-
-        var baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? settings.BaseUrl.TrimEnd('/')
-            : _webHelper.GetStoreLocation().TrimEnd('/');
-
-        return baseUrl + SSOAuthenticationDefaults.SamlAcsPath;
-    }
-
-    private void IssueCorrelationCookie(string requestId, string? returnUrl)
-    {
-        var response = _httpContextAccessor.HttpContext?.Response;
-        if (response is null) return;
-
-        // Pack request ID + returnUrl into the cookie value as a pipe-delimited tuple.
-        // No need for a full key-value codec; the two parts are short and well-formed.
-        var safeReturnUrl = returnUrl ?? string.Empty;
-        var cookieValue = $"{requestId}|{Uri.EscapeDataString(safeReturnUrl)}";
-
-        // SameSite=None over HTTPS: the IdP returns with a cross-site POST (see SamlCookieOptions).
-        response.Cookies.Append(
-            SSOAuthenticationDefaults.SamlCorrelationCookieName,
-            cookieValue,
-            SamlCookieOptions.For(response.HttpContext.Request, SSOAuthenticationDefaults.SamlCorrelationCookieLifetime));
     }
 
     #endregion

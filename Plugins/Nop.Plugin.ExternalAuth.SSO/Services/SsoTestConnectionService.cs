@@ -49,58 +49,9 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
     #endregion
 
-    #region Methods
+    #region Utilities
 
-    /// <inheritdoc />
-    public async Task<TestConnectionResult> TestAsync(int storeId)
-    {
-        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeId);
-
-        var result = settings.Protocol switch
-        {
-            SsoProtocol.OpenIdConnect => await TestOidcAsync(settings),
-            SsoProtocol.Saml2 => await TestSamlAsync(settings, storeId),
-            _ => Fail("SSO protocol is set to Off — nothing to test.")
-        };
-
-        // write a forced HandshakeRun audit row on every click. Forced=true so the
-        // breadcrumb survives even when EnableAuditLogging is off; the row is the
-        // tamper-evidence trail of who tested SSO and when.
-        await _eventService.LogAsync(
-            eventType: SsoAuthEventTypes.HandshakeRun,
-            protocol: settings.Protocol.ToString(),
-            storeId: storeId,
-            customerId: null,
-            customerEmail: string.Empty,
-            idpSubject: string.Empty,
-            notes: BuildHandshakeAuditNotes(result),
-            forced: true);
-
-        return result;
-    }
-
-    /// <summary>
-    /// Compact one-line summary of the test outcome for the audit Notes column —
-    /// readable in the admin grid without scrolling. Mirrors legacy
-    /// <c>BuildHandshakeDetail</c> shape.
-    /// </summary>
-    private static string BuildHandshakeAuditNotes(TestConnectionResult result)
-    {
-        var h = result.Handshake;
-        if (!string.IsNullOrEmpty(h.SkippedReason))
-            return $"Overall={(result.Success ? "PASS" : "FAIL")}; handshake skipped: {h.SkippedReason}";
-
-        return $"Overall={(result.Success ? "PASS" : "FAIL")}; "
-            + $"EntityID={(h.EntityIdMatches ? "match" : "mismatch")}; "
-            + $"SSO URL={(h.SsoUrlMatches ? "match" : "mismatch")}; "
-            + $"SLO URL={(h.SloUrlMatches ? "match" : "mismatch")}; "
-            + $"Certificate={(h.CertificateMatches ? "match" : "mismatch")} "
-            + $"({h.SigningKeyThumbprints.Count} cert(s) in metadata)";
-    }
-
-    #endregion
-
-    #region Utilities — OIDC
+    #region OIDC
 
     private async Task<TestConnectionResult> TestOidcAsync(SsoConfigurationSettings settings)
     {
@@ -140,7 +91,7 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
     #endregion
 
-    #region Utilities — SAML
+    #region SAML
 
     private async Task<TestConnectionResult> TestSamlAsync(SsoConfigurationSettings settings, int storeId)
     {
@@ -180,6 +131,8 @@ public class SsoTestConnectionService : ISsoTestConnectionService
         //    IdpMetadataUrl is empty so admins without published metadata still get the
         //    legacy reachability + cert checks above.
         var handshake = await RunHandshakeAsync(settings);
+        if (string.IsNullOrEmpty(handshake.SkippedReason))
+            await SaveMetadataStatusAsync(settings, storeId, DescribeDifferences(handshake));
 
         var ok = Ok(
             BuildSuccessMessage(handshake),
@@ -298,6 +251,78 @@ public class SsoTestConnectionService : ISsoTestConnectionService
     }
 
     /// <summary>
+    /// What a metadata comparison found, in words for the admin: the fields that differ
+    /// ("signing certificate, SSO URL"), or why the metadata could not be compared. Empty when
+    /// everything matched or no comparison was attempted (no metadata URL).
+    /// </summary>
+    internal static string DescribeDifferences(HandshakeResult handshake)
+    {
+        if (!string.IsNullOrEmpty(handshake.SkippedReason))
+            return string.Empty;
+
+        if (!handshake.MetadataFetched)
+            return $"the metadata could not be read ({handshake.Detail})";
+
+        var fields = new List<string>();
+        if (!handshake.EntityIdMatches) fields.Add("entity ID");
+        if (!handshake.SsoUrlMatches) fields.Add("SSO URL");
+        if (!handshake.SloUrlMatches) fields.Add("SLO URL");
+        if (!handshake.CertificateMatches) fields.Add("signing certificate");
+
+        return string.Join(", ", fields);
+    }
+
+    /// <summary>
+    /// Record the result of a metadata comparison on the store's settings: when, and what differed.
+    /// Read by the Configure page and System → Warnings.
+    /// </summary>
+    private async Task SaveMetadataStatusAsync(SsoConfigurationSettings settings, int storeId, string differences)
+    {
+        settings.IdpMetadataCheckedOnUtc = DateTime.UtcNow;
+        settings.IdpMetadataDifferences = differences;
+        await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpMetadataCheckedOnUtc, true, storeId, false);
+        await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpMetadataDifferences, true, storeId, false);
+        await _settingService.ClearCacheAsync();
+    }
+
+    /// <summary>
+    /// Write the IdP's published values over the ones that differ (the store opted in with
+    /// <see cref="SsoConfigurationSettings.AutoApplyIdpMetadata"/>). The certificate is replaced only
+    /// when the stored one is no longer published, so an IdP that lists an old and a new certificate
+    /// during a rollover keeps working with the stored one.
+    /// </summary>
+    private async Task ApplyMetadataAsync(SsoConfigurationSettings settings, int storeId, HandshakeResult handshake)
+    {
+        var imported = await _metadataImporter.ImportFromUrlAsync(settings.IdpMetadataUrl);
+
+        if (!handshake.EntityIdMatches && !string.IsNullOrEmpty(imported.IdpEntityId))
+        {
+            settings.IdpEntityId = imported.IdpEntityId;
+            await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpEntityId, true, storeId, false);
+        }
+
+        if (!handshake.SsoUrlMatches && !string.IsNullOrEmpty(imported.IdpSsoUrl))
+        {
+            settings.IdpSsoUrl = imported.IdpSsoUrl;
+            await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpSsoUrl, true, storeId, false);
+        }
+
+        if (!handshake.SloUrlMatches && !string.IsNullOrEmpty(imported.IdpSloUrl))
+        {
+            settings.IdpSloUrl = imported.IdpSloUrl;
+            await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpSloUrl, true, storeId, false);
+        }
+
+        if (!handshake.CertificateMatches && !string.IsNullOrEmpty(imported.IdpCertificateBase64))
+        {
+            settings.IdpCertificateBase64 = _secretsService.Protect(imported.IdpCertificateBase64);
+            await _settingService.SaveSettingOverridablePerStoreAsync(settings, x => x.IdpCertificateBase64, true, storeId, false);
+        }
+
+        await _settingService.ClearCacheAsync();
+    }
+
+    /// <summary>
     /// Prefer endpoints with the configured binding, fall back to any endpoint with a
     /// matching <c>Location</c>. SAML 2.0 lets an IdP advertise the same URL under
     /// multiple bindings — ADFS in particular ships one Location across both.
@@ -368,7 +393,7 @@ public class SsoTestConnectionService : ISsoTestConnectionService
 
     #endregion
 
-    #region Utilities — result helpers
+    #region Result helpers
 
     private static TestConnectionResult Ok(string message, string? details = null) =>
         new()
@@ -387,6 +412,95 @@ public class SsoTestConnectionService : ISsoTestConnectionService
             Details = details ?? string.Empty,
             CheckedAtUtc = DateTime.UtcNow
         };
+
+    #endregion
+
+    #endregion
+
+    #region Methods
+
+    /// <inheritdoc />
+    public async Task<string?> CheckMetadataAsync(int storeId, bool allowAutoApply)
+    {
+        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeId);
+        if (settings.Protocol != SsoProtocol.Saml2 || string.IsNullOrWhiteSpace(settings.IdpMetadataUrl))
+            return null;
+
+        var handshake = await RunHandshakeAsync(settings);
+        var differences = DescribeDifferences(handshake);
+
+        if (differences.Length > 0 && handshake.MetadataFetched && allowAutoApply && settings.AutoApplyIdpMetadata)
+        {
+            try
+            {
+                await ApplyMetadataAsync(settings, storeId, handshake);
+
+                await _eventService.LogAsync(
+                    eventType: SsoAuthEventTypes.ConfigChanged,
+                    protocol: SsoProtocolNames.Saml2,
+                    storeId: storeId,
+                    notes: $"IdP metadata applied automatically by the daily SSO check: {differences}.");
+
+                // Compare again, so the stored status says what is true now.
+                settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeId);
+                differences = DescribeDifferences(await RunHandshakeAsync(settings));
+            }
+            catch (Exception ex)
+            {
+                differences = $"{differences}; automatic apply failed ({ex.Message})";
+            }
+        }
+
+        await SaveMetadataStatusAsync(settings, storeId, differences);
+        return differences;
+    }
+
+    /// <inheritdoc />
+    public async Task<TestConnectionResult> TestAsync(int storeId)
+    {
+        var settings = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(storeId);
+
+        var result = settings.Protocol switch
+        {
+            SsoProtocol.OpenIdConnect => await TestOidcAsync(settings),
+            SsoProtocol.Saml2 => await TestSamlAsync(settings, storeId),
+            _ => Fail("SSO protocol is set to Off — nothing to test.")
+        };
+
+        // write a forced HandshakeRun audit row on every click. Forced=true so the
+        // breadcrumb survives even when EnableAuditLogging is off; the row is the
+        // tamper-evidence trail of who tested SSO and when.
+        await _eventService.LogAsync(
+            eventType: SsoAuthEventTypes.HandshakeRun,
+            protocol: settings.Protocol.ToString(),
+            storeId: storeId,
+            customerId: null,
+            customerEmail: string.Empty,
+            idpSubject: string.Empty,
+            notes: BuildHandshakeAuditNotes(result),
+            forced: true);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Compact one-line summary of the test outcome for the audit Notes column —
+    /// readable in the admin grid without scrolling. Mirrors legacy
+    /// <c>BuildHandshakeDetail</c> shape.
+    /// </summary>
+    private static string BuildHandshakeAuditNotes(TestConnectionResult result)
+    {
+        var h = result.Handshake;
+        if (!string.IsNullOrEmpty(h.SkippedReason))
+            return $"Overall={(result.Success ? "PASS" : "FAIL")}; handshake skipped: {h.SkippedReason}";
+
+        return $"Overall={(result.Success ? "PASS" : "FAIL")}; "
+            + $"EntityID={(h.EntityIdMatches ? "match" : "mismatch")}; "
+            + $"SSO URL={(h.SsoUrlMatches ? "match" : "mismatch")}; "
+            + $"SLO URL={(h.SloUrlMatches ? "match" : "mismatch")}; "
+            + $"Certificate={(h.CertificateMatches ? "match" : "mismatch")} "
+            + $"({h.SigningKeyThumbprints.Count} cert(s) in metadata)";
+    }
 
     #endregion
 }

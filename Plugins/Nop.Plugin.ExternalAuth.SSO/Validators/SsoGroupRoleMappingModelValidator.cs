@@ -13,8 +13,8 @@ namespace Nop.Plugin.ExternalAuth.SSO.Validators;
 /// <remarks>
 /// Auto-discovered by nopCommerce's validator registration. The privileged-role guard
 /// runs here too — UI defence on top of the service-layer guard, so an admin can't even
-/// post a privileged role ID through a tampered form. Entra group IDs (Object IDs) are
-/// 36-char GUIDs; we accept the canonical form with hyphens.
+/// post a privileged role ID through a tampered form. The IdP value is a group Object ID or an
+/// app-role value (see <c>IdpValuePattern</c>).
 /// </remarks>
 public class SsoGroupRoleMappingModelValidator : BaseNopValidator<SsoGroupRoleMappingModel>
 {
@@ -23,7 +23,7 @@ public class SsoGroupRoleMappingModelValidator : BaseNopValidator<SsoGroupRoleMa
     /// (e.g. <c>Store.Manager</c>). Letters, digits and <c>. _ - : /</c>, no spaces, at most 100
     /// characters (the column width).
     /// </summary>
-    private const string IdpValuePattern = @"^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,99}$";
+    internal const string IdpValuePattern = @"^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,99}$";
 
     public SsoGroupRoleMappingModelValidator(
         ICustomerService customerService,

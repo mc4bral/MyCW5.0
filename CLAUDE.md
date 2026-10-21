@@ -210,7 +210,8 @@ CW_NOP_5/
 │                               └── miniorange.saml/  old vendor copy, gitignored, never built — reference only
 ├── CWLibraries/
 │   └── CW.Common           Shared utilities for CW plugins (no domain logic — §11)
-├── Tests/Nop.Tests         NUnit tests (DO NOT EDIT — see §22 Note A)
+├── Tests/Nop.Tests         nop's NUnit tests (DO NOT EDIT)
+├── Tests/CW.Tests          Tests for the CW-owned plugins, one folder per plugin (§22 Note A)
 ├── Build/                  ClearPluginAssemblies.proj
 ├── Directory.Build.props   Central .NET 10.0 + version metadata
 ├── tasks/lessons.md        Captured lessons (§0.7)
@@ -241,7 +242,7 @@ wholesale. Port deliberately, into the 5.00 patterns (§10.5). `NOP41` is **not*
 
 | Plugin | Purpose | Status in 5.00 | Reference doc |
 |---|---|---|---|
-| `Nop.Plugin.ExternalAuth.SSO` | Single sign-on with Entra ID (OIDC / SAML 2.0) | **Ported** 2026-10-19; reviewed and extended (plugin version `…_DATA_0.7`). Sign-in not yet tested against a real IdP | `Plugins/Nop.Plugin.ExternalAuth.SSO/References/SSO_Plugin_Reference.md` |
+| `Nop.Plugin.ExternalAuth.SSO` | Single sign-on with Entra ID (OIDC / SAML 2.0) | **Ported** 2026-10-19; reviewed and extended (plugin version `…_DATA_0.9`); unit tests in `Tests/CW.Tests`. Sign-in not yet tested against a real IdP | `Plugins/Nop.Plugin.ExternalAuth.SSO/References/SSO_Plugin_Reference.md` |
 | `Nop.Plugin.CW.Core` | Base CW infrastructure, service overrides, exchanges, subsidies, packnames, admin menu root | Not started — §13–§21 describe its 4.9 code | 4.9 `CLAUDE.md` and `CWPlans/` |
 | `Nop.Plugin.CW.Freight` | Shipping / freight | Not started | 4.9 repo |
 | `Nop.Plugin.CW.ThemeCore` | Theme framework (accent colours, custom CSS) | Not started | 4.9 `CWPlans/CW_Theme_Build_Plans.md` |
@@ -269,7 +270,7 @@ Update this table as each plugin lands. Coupling rules between them are in §10.
 | Frontend (admin) | jQuery 3.7 + AdminLTE 3.2 + **Bootstrap 4.6** |
 | Asset bundling | WebOptimizer (`.scripts` / `.styles` suffixes) |
 | Localization | XML resources + Globalize/CLDR |
-| Test framework | NUnit 4.4 + FluentAssertions 7.2 + Moq 4.20 + SQLite (in `Tests/Nop.Tests`) |
+| Test framework | NUnit 4.6 + AwesomeAssertions 9.6 + Moq 4.20, the same as nop 5.00's `Tests/Nop.Tests` (which adds SQLite). CW tests live in `Tests/CW.Tests` — never in `Tests/Nop.Tests` |
 
 ---
 
@@ -1206,7 +1207,7 @@ what the port changed in the plugin's reference doc (`References/`).
 
 | Plugin | References |
 |---|---|
-| `ExternalAuth.SSO` | `Nop.Web.Framework` only — it needs no `Nop.Web` type, as nop's own `ExternalAuth.*` plugins. Switch to `Nop.Web` if it ever does |
+| `ExternalAuth.SSO` | `Nop.Web` (since 2026-10-20, for `SystemWarningCreatedEvent`, which feeds System → Warnings) |
 | `CW.Core` *(4.9; when ported)* | `Nop.Web`, `Nop.Web.Framework`, `CW.Common` |
 | `CW.Freight` *(4.9; when ported)* | `Nop.Web` |
 | Any new secondary plugin | `Nop.Web`, optionally `CW.Common`. Coupling to `CW.Core` per §10.2 — ask first. |
@@ -1906,8 +1907,12 @@ CW.Core defines `IPackNamePanelProvider` so other plugins can inject extra panel
 
 These are intentionally deferred and should be resolved before they block real work:
 
-- **Note A — Tests for CW plugins.** No tests currently ship with CW plugins (the SSO plugin has none either; its
-  sign-in flows have only been exercised through the DEBUG mock IdP). Decide whether new features add NUnit tests inside `Tests/Nop.Tests` (which conflicts with the Cardinal Rule), or whether a parallel `Tests/Cw.Tests` project should be added. Pending decision.
+- **Note A — Tests for CW plugins. DECIDED 2026-10-20.** CW tests live in **`Tests/CW.Tests`** (in the solution), one
+  folder per plugin, with nop's own stack (§4). `Tests/Nop.Tests` is never edited (Cardinal Rule). Start with pure
+  logic — no database, no network, no nop engine — and expose a plugin's private helper to the tests by making it
+  `internal` with `<InternalsVisibleTo Include="CW.Tests" />` in the plugin's `.csproj`, not by making it public.
+  First suite: `ExternalAuth.SSO` (66 cases, 2026-10-20). Still open: service tests over SQLite (they need nop's
+  test bootstrap) and the SSO sign-in flows against a real IdP (Note C). Run: `dotnet test Tests/CW.Tests`.
 - **Note B — Default theme. CLOSED 2026-08-27.** Only `DefaultClean` is deployed today, so nothing collides and there is no decision outstanding. The underlying hazard is real but is now written down where it will be found: **§10.4** records that `ViewLocationExpander` puts plugin views ahead of theme views, lists the five storefront views CW.Core forks, and gives the four-step check to run when a theme is enabled. `Voyage` and `Pavilion` remain `.gitignore`d; if either is enabled, run §10.4 step 2 first. (Theme plugins are not ported to 5.00 yet.)
 - **Note C — SSO sign-in against a real IdP.** OIDC and SAML sign-in, sign-out and `id_token_hint` have not run
   against a real identity provider (Entra or Keycloak). Until they have, treat both flows as unverified; the open

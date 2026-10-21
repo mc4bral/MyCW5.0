@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -43,70 +45,6 @@ public class LoginActionsFilter : IAsyncActionFilter
         _secretsService = secretsService;
         _storeContext = storeContext;
         _urlHelperFactory = urlHelperFactory;
-    }
-
-    #endregion
-
-    #region IAsyncActionFilter
-
-    /// <inheritdoc />
-    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
-    {
-        if (!IsCustomerLoginGet(context))
-        {
-            await next();
-            return;
-        }
-
-        var store = await _storeContext.GetCurrentStoreAsync();
-        var perStore = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
-
-        // SSO not active for this store — standard login form renders normally.
-        // Or the admin opted out of the auto-redirect via RedirectLoginToSso —
-        // SSO is still available via the public "Sign in with Microsoft" button on the
-        // login page, but /login itself stays on the standard local form.
-        if (!perStore.IsEnabled || perStore.Protocol == SsoProtocol.Off || !perStore.RedirectLoginToSso)
-        {
-            await next();
-            return;
-        }
-
-        // Cookie set on a previous turn — admin is mid-bypass, let the local form render.
-        if (context.HttpContext.Request.Cookies.ContainsKey(SSOAuthenticationDefaults.BypassCookieName))
-        {
-            await next();
-            return;
-        }
-
-        // Fresh bypass URL — validate the token and stamp the cookie.
-        if (TryReadBypassToken(context.HttpContext.Request, out var provided))
-        {
-            var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
-            var stored = _secretsService.TryUnprotect(systemWide.SsoBypassToken, out var t) ? t : null;
-
-            if (!string.IsNullOrEmpty(stored) && ConstantTimeEquals(provided, stored))
-            {
-                IssueBypassCookie(context.HttpContext.Response);
-                await next();
-                return;
-            }
-            // Token didn't match — fall through to SSO redirect (don't leak whether the
-            // bypass is even configured).
-        }
-
-        // Default path: redirect to the plugin's external-auth challenge.
-        // ActionExecutingContext inherits from ActionContext so it can be passed directly.
-        var urlHelper = _urlHelperFactory.GetUrlHelper(context);
-        var returnUrl = context.HttpContext.Request.Query["ReturnUrl"].ToString();
-        var challengeUrl = urlHelper.Action("Login", "ExternalAuthentication", new { returnUrl });
-        if (string.IsNullOrEmpty(challengeUrl))
-        {
-            // Couldn't resolve the route — let the request continue rather than break login.
-            await next();
-            return;
-        }
-
-        context.Result = new RedirectResult(challengeUrl);
     }
 
     #endregion
@@ -164,19 +102,81 @@ public class LoginActionsFilter : IAsyncActionFilter
     }
 
     /// <summary>
-    /// Constant-time string equality to avoid leaking the bypass token byte-by-byte through
-    /// timing differences. Both operands are trimmed of length comparison short-circuits.
+    /// Compare the provided bypass token with the stored one without leaking either through timing.
+    /// Both are hashed first, so the comparison is over two equal-length digests: the length of the
+    /// stored token does not show, and <see cref="CryptographicOperations.FixedTimeEquals"/> takes the
+    /// same time whichever byte differs.
     /// </summary>
-    private static bool ConstantTimeEquals(string a, string b)
+    internal static bool TokensMatch(string provided, string stored)
     {
-        if (a.Length != b.Length)
-            return false;
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(provided));
+        var storedHash = SHA256.HashData(Encoding.UTF8.GetBytes(stored));
 
-        var diff = 0;
-        for (var i = 0; i < a.Length; i++)
-            diff |= a[i] ^ b[i];
+        return CryptographicOperations.FixedTimeEquals(providedHash, storedHash);
+    }
 
-        return diff == 0;
+    #endregion
+
+    #region IAsyncActionFilter
+
+    /// <inheritdoc />
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        if (!IsCustomerLoginGet(context))
+        {
+            await next();
+            return;
+        }
+
+        var store = await _storeContext.GetCurrentStoreAsync();
+        var perStore = await _settingService.LoadSettingAsync<SsoConfigurationSettings>(store.Id);
+
+        // SSO not active for this store — standard login form renders normally.
+        // Or the admin opted out of the auto-redirect via RedirectLoginToSso —
+        // SSO is still available via the public "Sign in with Microsoft" button on the
+        // login page, but /login itself stays on the standard local form.
+        if (!perStore.IsEnabled || perStore.Protocol == SsoProtocol.Off || !perStore.RedirectLoginToSso)
+        {
+            await next();
+            return;
+        }
+
+        // Cookie set on a previous turn — admin is mid-bypass, let the local form render.
+        if (context.HttpContext.Request.Cookies.ContainsKey(SSOAuthenticationDefaults.BypassCookieName))
+        {
+            await next();
+            return;
+        }
+
+        // Fresh bypass URL — validate the token and stamp the cookie.
+        if (TryReadBypassToken(context.HttpContext.Request, out var provided))
+        {
+            var systemWide = await _settingService.LoadSettingAsync<SsoSystemSettings>(storeId: 0);
+            var stored = _secretsService.TryUnprotect(systemWide.SsoBypassToken, out var t) ? t : null;
+
+            if (!string.IsNullOrEmpty(stored) && TokensMatch(provided, stored))
+            {
+                IssueBypassCookie(context.HttpContext.Response);
+                await next();
+                return;
+            }
+            // Token didn't match — fall through to SSO redirect (don't leak whether the
+            // bypass is even configured).
+        }
+
+        // Default path: redirect to the plugin's external-auth challenge.
+        // ActionExecutingContext inherits from ActionContext so it can be passed directly.
+        var urlHelper = _urlHelperFactory.GetUrlHelper(context);
+        var returnUrl = context.HttpContext.Request.Query["ReturnUrl"].ToString();
+        var challengeUrl = urlHelper.Action("Login", "ExternalAuthentication", new { returnUrl });
+        if (string.IsNullOrEmpty(challengeUrl))
+        {
+            // Couldn't resolve the route — let the request continue rather than break login.
+            await next();
+            return;
+        }
+
+        context.Result = new RedirectResult(challengeUrl);
     }
 
     #endregion

@@ -1,5 +1,5 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
-using Nop.Services.Security;
 
 namespace Nop.Plugin.ExternalAuth.SSO.Services;
 
@@ -7,11 +7,9 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 /// Default implementation of <see cref="ISsoSecretsService"/>.
 /// </summary>
 /// <remarks>
-/// Current format: <c>dp1:</c> + Data Protection ciphertext. The prefix says how a value was
-/// written, so the format can change again without guessing. Legacy format (no prefix): Data
-/// Protection ciphertext wrapped in nop's <c>IEncryptionService</c>; read only, rewritten by the
-/// plugin update (<c>SSOAuthenticationMethod.ReprotectLegacySecretsAsync</c>). Once no install
-/// holds legacy values, the legacy branch and the <see cref="IEncryptionService"/> dependency can go.
+/// Stored format: <c>dp1:</c> + Data Protection ciphertext. The prefix says how a value was written,
+/// so the format can change again without guessing. A value without it (the two-layer format used
+/// before 2026-10-19, removed on 2026-10-20) is refused like any value this server cannot decrypt.
 /// </remarks>
 public class SsoSecretsService : ISsoSecretsService
 {
@@ -20,21 +18,17 @@ public class SsoSecretsService : ISsoSecretsService
     /// <summary>Data Protection purpose — changing it makes every stored secret unreadable.</summary>
     public const string DataProtectionPurpose = "Nop.Plugin.ExternalAuth.SSO.Settings.v1";
 
-    /// <summary>Prefix of values in the current single-layer format.</summary>
+    /// <summary>Prefix of every stored value.</summary>
     public const string CurrentFormatPrefix = "dp1:";
 
-    protected readonly IEncryptionService _encryptionService;
     protected readonly IDataProtector _dataProtector;
 
     #endregion
 
     #region Ctor
 
-    public SsoSecretsService(
-        IEncryptionService encryptionService,
-        IDataProtectionProvider dataProtectionProvider)
+    public SsoSecretsService(IDataProtectionProvider dataProtectionProvider)
     {
-        _encryptionService = encryptionService;
         _dataProtector = dataProtectionProvider.CreateProtector(DataProtectionPurpose);
     }
 
@@ -57,11 +51,10 @@ public class SsoSecretsService : ISsoSecretsService
         if (string.IsNullOrEmpty(ciphertext))
             return string.Empty;
 
-        if (ciphertext.StartsWith(CurrentFormatPrefix, StringComparison.Ordinal))
-            return _dataProtector.Unprotect(ciphertext[CurrentFormatPrefix.Length..]);
+        if (!ciphertext.StartsWith(CurrentFormatPrefix, StringComparison.Ordinal))
+            throw new CryptographicException("The stored SSO secret is not in the current format; re-enter it on the Configure page.");
 
-        // Legacy: nop's IEncryptionService outside, Data Protection inside.
-        return _dataProtector.Unprotect(_encryptionService.DecryptText(ciphertext));
+        return _dataProtector.Unprotect(ciphertext[CurrentFormatPrefix.Length..]);
     }
 
     /// <inheritdoc />
@@ -78,10 +71,6 @@ public class SsoSecretsService : ISsoSecretsService
             return false;
         }
     }
-
-    /// <inheritdoc />
-    public bool IsCurrentFormat(string? ciphertext)
-        => string.IsNullOrEmpty(ciphertext) || ciphertext.StartsWith(CurrentFormatPrefix, StringComparison.Ordinal);
 
     #endregion
 }

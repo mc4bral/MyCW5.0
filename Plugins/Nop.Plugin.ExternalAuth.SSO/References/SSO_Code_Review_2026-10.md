@@ -4,7 +4,7 @@
 |---|---|
 | **Scope** | `Nop.Plugin.ExternalAuth.SSO` as it stands on 2026-10-19, after the 5.00 port and the G1–G14 fixes |
 | **Method** | Read every service, filter, controller and view; compared with nopCommerce 5.00's own code and its `ExternalAuth.Facebook` plugin; checked library APIs in the restored NuGet packages; smoke-tested the running site |
-| **Status** | Findings. **D1–D6, R1–R9 and features F1–F5 done 2026-10-19** (approved); P3 open |
+| **Status** | Findings. **D1–D6, R1–R9 and features F1–F5 done 2026-10-19** (approved); P3, the larger items and the planned-but-never-built items done 2026-10-20, with D7 |
 
 **"SSL" in the request is read as SSO** (sign-on libraries). TLS itself is handled by Kestrel / IIS and needs no
 library; certificate handling already uses .NET 9+'s `X509CertificateLoader`, which is the current API.
@@ -21,7 +21,7 @@ first test.
 
 | Priority | Count | What |
 |---|---|---|
-| **P0 — defect** | 6 | broken view on multi-store sites; audit regression from G13; Entra group overage revokes roles; Configure save blocked (D4); store-0 audit rows rejected (D5); a store-scope save blanked the system-wide settings (D6) |
+| **P0 — defect** | 7 | broken view on multi-store sites; audit regression from G13; Entra group overage revokes roles; Configure save blocked (D4); store-0 audit rows rejected (D5); a store-scope save blanked the system-wide settings (D6); saving Configure needed the secret re-entered (D7) |
 | **P1 — confirm on first IdP test** | 2 | SAML certificate chain validation; OIDC claim mapping |
 | **P2 — design / reuse** | 9 | metadata parser, certificate helper, audit API, controller split, scripts, … |
 | **P3 — style** | 7 | field modifiers, naming, constants, … |
@@ -323,8 +323,50 @@ Follow **nop's** style where nop has one, because the plugin lives inside it:
 > `Infrastructure/SsoLocaleResources.cs`: 11 unused keys removed (the update deletes them) and the mapping intro
 > mentions app roles. Milestone tags and `SSOPlan.v2.md` pointers are replaced with plain text or reference-doc
 > sections. `NopStartup` is grouped by feature, and the store-scope component's remarks say why it exists.
-> Verified: the build is clean, all SSO admin pages return 200, and 251 strings are installed. **Not done:** the
-> `MockSso/Login.cshtml` inline script (tracked with R7).
+> Verified: the build is clean, all SSO admin pages return 200, and 251 strings are installed.
+>
+> **Follow-up 2026-10-20 (CLAUDE.md compliance check):** 12 files had their public region before `Utilities`; reordered
+> to Fields → Ctor → Utilities → public, with several topic regions nested under one `Utilities` (code lines
+> unchanged). The mock login page's inline script and style moved to `Content/MockSso/` (hints as `data-hint` on the
+> radios; tags written raw because the page has no layout). The mapping form's "Save and continue" `onclick` and hidden
+> field were replaced by nop's `[ParameterBasedOnFormName("save-continue", "continueEditing")]`. Verified in the browser:
+> continue-editing on create and edit, Save back to the list, every mock scenario's hint and Groups toggle.
+>
+> **Small fixes 2026-10-20 (plugin version `…_DATA_0.8`):**
+> - The *IdP metadata URL* hint claimed the IdP fields are auto-refreshed from it. Nothing does that — the URL is read
+>   only by Test connection's handshake. The hint now says so and points to *Import IdP metadata*.
+> - Bypass token: `ConstantTimeEquals` replaced by SHA-256 of both values + `CryptographicOperations.FixedTimeEquals`
+>   (§6), so the stored token's length no longer shows. Verified: no token and a wrong token redirect to SSO, the
+>   right one serves the login page and sets the bypass cookie.
+> - New `AddSsoAccountModelValidator`: the store must be one the picker offers (a store without SSO). It replaces the
+>   controller's hard-coded English warning and also refuses a tampered store id. Verified: 0 and 999 refused.
+> - `sso-admin.js` moved to `Content/Admin/Sso/` (CLAUDE.md §9.8).
+> - `StoreScopeConfigurationModel`: three nullable warnings fixed — the plugin now builds with 0 warnings.
+>
+> **Larger items 2026-10-20 (decisions by the user):**
+> - **Configure view split** — one partial per card in `Views/Configure/` (12); `Configure.cshtml` keeps the form,
+>   scope picker and `<nop-card>` wrappers (900 → ~270 lines). Content moved line for line (checked: same lines,
+>   none lost or doubled). Three stale comments corrected. Verified: both scopes render, the protocol switch shows and
+>   hides the right cards, a store save round-trips across partials.
+> - **Old-format secrets removed** — no install held them. `SsoSecretsService` reads `dp1:` only (no prefix → refused);
+>   the `IEncryptionService` dependency, `IsCurrentFormat` and the update's converter are gone.
+> - **Tests** — new `Tests/CW.Tests` project (CLAUDE.md §22 Note A), first suite for this plugin: 66 cases, pure
+>   logic. `ComputeRoleChanges` was pulled out of `SyncCustomerRolesAsync` so the role diff is testable; helpers the
+>   tests reach are `internal` (`InternalsVisibleTo CW.Tests`). A deliberately broken wildcard rule was caught by
+>   its test, then restored.
+>
+> **Planned-but-never-built items 2026-10-20 (plugin version `…_DATA_0.9`; decisions by the user):** daily
+> "SSO certificate and metadata check" task (metadata comparison, opt-in automatic apply per store, one
+> `ScheduledCheck` audit row per finding); certificate and client-secret expiry warnings in nop's System → Warnings
+> (`SystemWarningCreatedEvent` — the plugin now references `Nop.Web`); new settings `AutoApplyIdpMetadata`,
+> `ClientSecretExpiresOnUtc`, `CertificateWarningDays`. Health checks: decided not needed. Detail: reference §7.4.
+>
+> ### D7. Saving Configure without re-entering a stored secret failed — FIXED 2026-10-20 (found in the item-4 test)
+>
+> The validator accepts an empty client secret or IdP certificate when `HasClientSecret` / `HasIdpCertificate` says one
+> is stored — but the view never posted those flags, so they bound to false and every save of an OIDC or SAML store
+> needed the secret typed again ("…is required"). Present before this review; earlier tests always posted a value.
+> **Fix:** both flags are posted as hidden fields. Verified: SAML and OIDC saves without the secret keep the stored one.
 
 - `IConfigurationModelFactory.ChangeSSOSope` (typo) → `SetStoreScopeAsync`; `GetCurrentCustomer` → `…Async`, or
   remove (callers have `IWorkContext`).

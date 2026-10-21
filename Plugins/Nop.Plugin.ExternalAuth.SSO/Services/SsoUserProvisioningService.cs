@@ -80,7 +80,7 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
     /// OIDC carries <c>_claim_names</c> pointing <c>groups</c> at Microsoft Graph (or
     /// <c>hasgroups</c> in the implicit flow), SAML carries a <c>groups.link</c> claim.
     /// </summary>
-    private static bool HasGroupsOverage(ClaimsPrincipal principal)
+    internal static bool HasGroupsOverage(ClaimsPrincipal principal)
     {
         foreach (var claim in principal.Claims)
         {
@@ -99,7 +99,7 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
         return false;
     }
 
-    private static bool IsEmailDomainAllowed(string email, string allowedDomainsCsv)
+    internal static bool IsEmailDomainAllowed(string email, string allowedDomainsCsv)
     {
         if (string.IsNullOrWhiteSpace(allowedDomainsCsv))
             return true;
@@ -178,6 +178,27 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
         return result;
     }
 
+    /// <summary>
+    /// Which roles a sign-in grants and removes. Only roles the store's SSO <paramref name="owned"/>
+    /// are ever touched: grant the resolved ones the customer lacks, remove the owned ones that were
+    /// not resolved. Roles outside the owned set are left alone.
+    /// </summary>
+    /// <param name="resolved">Roles the token's groups / app roles map to, plus the default roles</param>
+    /// <param name="owned">Every role the store's SSO manages: any mapped role plus the default roles</param>
+    /// <param name="current">The customer's current role ids</param>
+    internal static (List<int> toAdd, List<int> toRemove) ComputeRoleChanges(
+        IEnumerable<int> resolved, IEnumerable<int> owned, IEnumerable<int> current)
+    {
+        var ownedSet = owned.ToHashSet();
+        var resolvedSet = resolved.ToHashSet();
+        var currentSet = current.ToHashSet();
+
+        var toAdd = resolvedSet.Intersect(ownedSet).Except(currentSet).ToList();
+        var toRemove = ownedSet.Except(resolvedSet).Intersect(currentSet).ToList();
+
+        return (toAdd, toRemove);
+    }
+
     private async Task<(IList<int> granted, IList<int> removed)> SyncCustomerRolesAsync(
         Customer customer,
         int storeId,
@@ -198,10 +219,7 @@ public class SsoUserProvisioningService : ISsoUserProvisioningService
             return (Array.Empty<int>(), Array.Empty<int>());
 
         var currentRoles = await _customerService.GetCustomerRolesAsync(customer);
-        var currentRoleIds = currentRoles.Select(r => r.Id).ToHashSet();
-
-        var toAdd = resolved.Intersect(owned).Except(currentRoleIds).ToList();
-        var toRemove = owned.Except(resolved).Intersect(currentRoleIds).ToList();
+        var (toAdd, toRemove) = ComputeRoleChanges(resolved, owned, currentRoles.Select(r => r.Id));
 
         foreach (var roleId in toAdd)
         {

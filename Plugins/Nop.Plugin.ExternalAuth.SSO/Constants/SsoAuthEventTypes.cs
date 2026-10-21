@@ -49,6 +49,13 @@ public static class SsoAuthEventTypes
     /// per-check outcome summary (EntityID / SSO URL / SLO URL / Certificate match flags).
     /// </summary>
     public const string HandshakeRun = "HandshakeRun";
+
+    /// <summary>
+    /// The daily "SSO certificate and metadata check" found something to act on (a certificate or
+    /// client secret that expires soon or has expired, IdP metadata that differs). One row per finding
+    /// per run; Notes carries the same text as System → Warnings.
+    /// </summary>
+    public const string ScheduledCheck = "ScheduledCheck";
 }
 
 /// <summary>

@@ -37,48 +37,6 @@ public class SsoStoreSummaryModelFactory : ISsoStoreSummaryModelFactory
 
     #endregion
 
-    #region Methods
-
-    /// <inheritdoc />
-    public Task<SsoStoreSummarySearchModel> PrepareSearchModelAsync(SsoStoreSummarySearchModel searchModel)
-    {
-        searchModel.SetGridPageSize();
-        return Task.FromResult(searchModel);
-    }
-
-    /// <inheritdoc />
-    public async Task<SsoStoreSummaryListModel> PrepareListModelAsync(SsoStoreSummarySearchModel searchModel)
-    {
-        var summaries = await _summaryService.ListAsync();
-
-        var ordered = summaries
-            .OrderBy(s => s.DisplayOrder)
-            .ThenBy(s => s.StoreName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var paged = new PagedList<SsoStoreSummary>(ordered, searchModel.Page - 1, searchModel.PageSize);
-
-        return await new SsoStoreSummaryListModel().PrepareToGridAsync(searchModel, paged, () =>
-            paged.SelectAwait(MapToRowAsync));
-    }
-
-    /// <inheritdoc />
-    public async Task<AddSsoAccountModel> PrepareAddModelAsync()
-    {
-        var unconfigured = await _summaryService.ListUnconfiguredAsync();
-
-        var model = new AddSsoAccountModel
-        {
-            AvailableStores = unconfigured
-                .Select(s => new SelectListItem { Value = s.StoreId.ToString(), Text = s.StoreName })
-                .ToList()
-        };
-
-        return model;
-    }
-
-    #endregion
-
     #region Utilities
 
     private async ValueTask<SsoStoreSummaryModel> MapToRowAsync(SsoStoreSummary s)
@@ -125,6 +83,48 @@ public class SsoStoreSummaryModelFactory : ISsoStoreSummaryModelFactory
         if (!utc.HasValue) return "—";
         var local = await _dateTimeHelper.ConvertToUserTimeAsync(utc.Value, DateTimeKind.Utc);
         return local.ToString("yyyy-MM-dd HH:mm");
+    }
+
+    #endregion
+
+    #region Methods
+
+    /// <inheritdoc />
+    public Task<SsoStoreSummarySearchModel> PrepareSearchModelAsync(SsoStoreSummarySearchModel searchModel)
+    {
+        searchModel.SetGridPageSize();
+        return Task.FromResult(searchModel);
+    }
+
+    /// <inheritdoc />
+    public async Task<SsoStoreSummaryListModel> PrepareListModelAsync(SsoStoreSummarySearchModel searchModel)
+    {
+        var summaries = await _summaryService.ListAsync();
+
+        var ordered = summaries
+            .OrderBy(s => s.DisplayOrder)
+            .ThenBy(s => s.StoreName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var paged = new PagedList<SsoStoreSummary>(ordered, searchModel.Page - 1, searchModel.PageSize);
+
+        return await new SsoStoreSummaryListModel().PrepareToGridAsync(searchModel, paged, () =>
+            paged.SelectAwait(MapToRowAsync));
+    }
+
+    /// <inheritdoc />
+    public async Task<AddSsoAccountModel> PrepareAddModelAsync()
+    {
+        var unconfigured = await _summaryService.ListUnconfiguredAsync();
+
+        var model = new AddSsoAccountModel
+        {
+            AvailableStores = unconfigured
+                .Select(s => new SelectListItem { Value = s.StoreId.ToString(), Text = s.StoreName })
+                .ToList()
+        };
+
+        return model;
     }
 
     #endregion

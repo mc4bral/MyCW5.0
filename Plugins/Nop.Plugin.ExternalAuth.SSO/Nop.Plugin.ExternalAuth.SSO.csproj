@@ -17,6 +17,11 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- Unit tests of internal helpers (token match, email-domain allowlist, role changes) — Tests/CW.Tests. -->
+		<InternalsVisibleTo Include="CW.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Remove="plugin.json" />
 		<None Remove="Views\_ViewImports.cshtml" />
 		<None Remove="Views\_ViewStart.cshtml" />
@@ -48,6 +53,42 @@
 		<Content Include="Views\Configure.cshtml">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Views\Configure\_AuditLogging.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_BindingsRedirects.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_ClaimMapping.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_General.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_IdentityProvider.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_LoginBypass.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_MockMode.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_OpenIdConnect.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_SendToIdpTeam.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_ServiceProvider.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_TestConnection.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Views\Configure\_UserProvisioning.cshtml">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 		<Content Include="Views\PublicInfo.cshtml">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
@@ -63,7 +104,7 @@
 		<Content Include="Views\GroupRoleMappings.cshtml">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<Content Include="Content\Admin\sso-admin.js">
+		<Content Include="Content\Admin\Sso\sso-admin.js">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 		<Content Include="Views\CreateOrUpdateGroupRoleMapping.cshtml">
@@ -72,11 +113,18 @@
 		<Content Include="Views\MockSso\Login.cshtml">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Content\MockSso\mock-sso-login.css">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Content\MockSso\mock-sso-login.js">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 
 	<ItemGroup>
-		<ProjectReference Include="$(SolutionDir)\Presentation\Nop.Web.Framework\Nop.Web.Framework.csproj" />
+		<!-- Nop.Web (not only Nop.Web.Framework) for SystemWarningCreatedEvent, which feeds System → Warnings. -->
+		<ProjectReference Include="$(SolutionDir)\Presentation\Nop.Web\Nop.Web.csproj" />
 		<ClearPluginAssemblies Include="$(SolutionDir)\Build\ClearPluginAssemblies.proj" />
 	</ItemGroup>
 

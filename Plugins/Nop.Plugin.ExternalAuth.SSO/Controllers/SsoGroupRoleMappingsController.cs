@@ -110,6 +110,7 @@ public class SsoGroupRoleMappingsController : SsoAdminControllerBase
     /// </summary>
     [HttpPost]
     [CheckPermission(ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS)]
+    [ParameterBasedOnFormName("save-continue", "continueEditing")]
     public virtual async Task<IActionResult> GroupRoleMappingCreate(SsoGroupRoleMappingModel model, bool continueEditing)
     {
         if (!ModelState.IsValid || await IsDuplicateAsync(model, exceptId: null))
@@ -140,6 +141,7 @@ public class SsoGroupRoleMappingsController : SsoAdminControllerBase
     /// </summary>
     [HttpPost]
     [CheckPermission(ExternalAuthSSOPermissions.ACCESS_SSO_SETTINGS)]
+    [ParameterBasedOnFormName("save-continue", "continueEditing")]
     public virtual async Task<IActionResult> GroupRoleMappingEdit(SsoGroupRoleMappingModel model, bool continueEditing)
     {
         var entity = await _groupRoleMappingService.GetByIdAsync(model.Id);

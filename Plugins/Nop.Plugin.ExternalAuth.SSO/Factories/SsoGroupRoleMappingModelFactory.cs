@@ -40,6 +40,35 @@ public class SsoGroupRoleMappingModelFactory : ISsoGroupRoleMappingModelFactory
 
     #endregion
 
+    #region Utilities
+
+    private async Task<IList<SelectListItem>> BuildStoreOptionsAsync(bool includeAny)
+    {
+        var options = new List<SelectListItem>();
+        if (includeAny)
+        {
+            var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllStores");
+            options.Add(new SelectListItem { Value = "0", Text = anyLabel });
+        }
+
+        foreach (var store in await _storeService.GetAllStoresAsync())
+            options.Add(new SelectListItem { Value = store.Id.ToString(), Text = store.Name });
+
+        return options;
+    }
+
+    private async Task<IList<SelectListItem>> BuildCustomerRoleOptionsAsync()
+    {
+        var allRoles = await _customerService.GetAllCustomerRolesAsync(showHidden: true);
+        return allRoles
+            .Where(r => !SsoRoles.IsPrivileged(r.SystemName))
+            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(r => new SelectListItem { Value = r.Id.ToString(), Text = r.Name })
+            .ToList();
+    }
+
+    #endregion
+
     #region Methods
 
     /// <inheritdoc />
@@ -108,35 +137,6 @@ public class SsoGroupRoleMappingModelFactory : ISsoGroupRoleMappingModelFactory
         model.AvailableCustomerRoles = await BuildCustomerRoleOptionsAsync();
 
         return model;
-    }
-
-    #endregion
-
-    #region Utilities
-
-    private async Task<IList<SelectListItem>> BuildStoreOptionsAsync(bool includeAny)
-    {
-        var options = new List<SelectListItem>();
-        if (includeAny)
-        {
-            var anyLabel = await _localizationService.GetResourceAsync("Plugins.ExternalAuth.SSO.Filters.AllStores");
-            options.Add(new SelectListItem { Value = "0", Text = anyLabel });
-        }
-
-        foreach (var store in await _storeService.GetAllStoresAsync())
-            options.Add(new SelectListItem { Value = store.Id.ToString(), Text = store.Name });
-
-        return options;
-    }
-
-    private async Task<IList<SelectListItem>> BuildCustomerRoleOptionsAsync()
-    {
-        var allRoles = await _customerService.GetAllCustomerRolesAsync(showHidden: true);
-        return allRoles
-            .Where(r => !SsoRoles.IsPrivileged(r.SystemName))
-            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(r => new SelectListItem { Value = r.Id.ToString(), Text = r.Name })
-            .ToList();
     }
 
     #endregion

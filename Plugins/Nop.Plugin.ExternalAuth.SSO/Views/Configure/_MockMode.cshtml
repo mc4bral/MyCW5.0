@@ -1,0 +1,19 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-mock" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="alert alert-warning">
+        <strong><i class="fas fa-exclamation-triangle"></i> @T("Plugins.ExternalAuth.SSO.Cards.MockMode.WarningTitle")</strong>
+        @Html.Raw(T("Plugins.ExternalAuth.SSO.Cards.MockMode.WarningBody"))
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+        <nop-label asp-for="EnableMockMode" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="EnableMockMode" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.EnableMockMode.Hint")</small>
+            <span asp-validation-for="EnableMockMode"></span>
+        </div>
+    </div>
+</div>

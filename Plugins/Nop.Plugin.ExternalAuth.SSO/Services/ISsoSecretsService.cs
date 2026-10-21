@@ -12,10 +12,9 @@ namespace Nop.Plugin.ExternalAuth.SSO.Services;
 /// </para>
 /// <para>
 /// One layer: the Data Protection key ring, which nop keeps outside the database
-/// (<c>App_Data/DataProtectionKeys</c>, or Redis / Azure when configured). Values written before
-/// 2026-10-19 were also wrapped in nop's <c>IEncryptionService</c>, whose key lives in the same
-/// database as the values; they are still read, and the plugin update rewrites them. A value that
-/// cannot be decrypted is an error, never a silent fallback to the raw text.
+/// (<c>App_Data/DataProtectionKeys</c>, or Redis / Azure when configured). A value that cannot be
+/// decrypted — other keys, or not in the current format — is an error, never a silent fallback to
+/// the raw text.
 /// </para>
 /// </remarks>
 public interface ISsoSecretsService
@@ -27,9 +26,9 @@ public interface ISsoSecretsService
     string Protect(string? plaintext);
 
     /// <summary>
-    /// Decrypt a stored value, current or legacy format. Empty in, empty out.
+    /// Decrypt a stored value. Empty in, empty out.
     /// </summary>
-    /// <exception cref="System.Security.Cryptography.CryptographicException">The value cannot be decrypted with this server's keys</exception>
+    /// <exception cref="System.Security.Cryptography.CryptographicException">The value is not in the current format, or cannot be decrypted with this server's keys</exception>
     string Unprotect(string? ciphertext);
 
     /// <summary>
@@ -37,9 +36,4 @@ public interface ISsoSecretsService
     /// the value cannot be decrypted.
     /// </summary>
     bool TryUnprotect(string? ciphertext, out string plaintext);
-
-    /// <summary>
-    /// Whether a stored value is empty or already in the current single-layer format.
-    /// </summary>
-    bool IsCurrentFormat(string? ciphertext);
 }

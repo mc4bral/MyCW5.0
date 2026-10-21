@@ -113,8 +113,8 @@ Saved with `overrideForStore: true` for the store selected on the Configure page
 | Group | Properties |
 |---|---|
 | General | `Protocol` (`Off` / `OpenIdConnect` / `Saml2`), `IsEnabled`, `BaseUrl`, `IdpDisplayName` (login-button label, default "Microsoft"), `DisplayOrder`, `RedirectLoginToSso` (default true), `EnableMockMode` (DEBUG only) |
-| OIDC | `Authority`, `ClientId`, `ClientSecret`*, `CallbackPath` (`/signin-microsoft`), `Scopes` (`openid profile email`) |
-| SAML IdP | `IdpEntityId`, `IdpSsoUrl`, `IdpSloUrl`, `IdpCertificateBase64`*, `IdpMetadataUrl` |
+| OIDC | `Authority`, `ClientId`, `ClientSecret`*, `ClientSecretExpiresOnUtc` (date typed by the admin, for the expiry warning — §7.4), `CallbackPath` (`/signin-microsoft`), `Scopes` (`openid profile email`) |
+| SAML IdP | `IdpEntityId`, `IdpSsoUrl`, `IdpSloUrl`, `IdpCertificateBase64`*, `IdpMetadataUrl`, `AutoApplyIdpMetadata` (default off — §7.4). Written by the plugin, not on the form: `IdpMetadataCheckedOnUtc`, `IdpMetadataDifferences` (last comparison; cleared when an admin changes the IdP fields) |
 | SAML SP | `SpEntityId`, `AcsUrl`, `SpLogoutUrl`, `SpPfxBase64`*, `SpPfxPassword`*, `SignedRequest` (sign AuthnRequest), `SignLogoutRequest` (sign logout messages, independently), `EncryptedAssertion`, `AllowIdpInitiatedLogin` (default off), `LoginBinding`, `LogoutBinding` (`SamlBinding` enum, dropdowns: HTTP-Redirect default, HTTP-POST) |
 | Claims | `EmailClaimType`, `UsernameClaimType`, `FirstNameClaimType`, `LastNameClaimType`, `GroupsClaimType`, `RolesClaimType` (app roles, default `roles`; both feed the mapping) |
 | Provisioning | `AutoRegister` (new customers allowed, default true), `DefaultRoleIds` (`List<int>`, stored as a comma list; the Configure picker leaves out privileged roles and the save drops any that are posted anyway), `AllowedEmailDomains` (CSV, `*.example.com` wildcards), `RefreshRolesOnLogin` (true) |
@@ -135,6 +135,7 @@ store-0 values and the "deleted" store would silently inherit them.
 | `LoginAttemptCapPerHour` | 60 | per-IP cap per hour, counted separately for the login entry point and `/saml/acs`; 0 = off |
 | `EnableAuditLogging` | true | off = no audit rows, except `HandshakeRun` (forced) and `LogCleared` (written directly) |
 | `AuditRetentionDays` | 365 | rows older than this are deleted by the daily scheduled task **SSO audit log retention** (`SsoAuditRetentionTask`, registered on install and update); 0 = keep forever |
+| `CertificateWarningDays` | 30 | System → Warnings starts warning this many days before a certificate or client secret expires (1–365; §7.4) |
 
 These cards render on the Configure page only at scope "All stores"; the per-store cards render only when a
 store is selected. A save at a store scope writes only the per-store settings — the system-wide ones are saved only
@@ -298,10 +299,10 @@ skips the account picker and honours `post_logout_redirect_uri`. Not yet run aga
 ### 7.1 Secrets at rest
 
 `SsoSecretsService.Protect` = ASP.NET Core Data Protection (purpose `Nop.Plugin.ExternalAuth.SSO.Settings.v1`),
-stored as `dp1:` + ciphertext — one layer, keyed outside the database. `Unprotect` reads that, and also the legacy
-two-layer form (nop's `IEncryptionService` around Data Protection, written before 2026-10-19), which the plugin update
-to `…_DATA_0.5` rewrites; a value the server cannot decrypt is left as it is. `TryUnprotect` returns false instead of
-throwing. Applies to `ClientSecret`, `IdpCertificateBase64`, `SpPfxBase64`, `SpPfxPassword`, `SsoBypassToken`. The
+stored as `dp1:` + ciphertext — one layer, keyed outside the database. A value without the prefix, or one this
+server's keys cannot decrypt, is refused (`CryptographicException`); `TryUnprotect` returns false instead of
+throwing. The two-layer format used before 2026-10-19 (nop's `IEncryptionService` around Data Protection) and its
+converter were removed on 2026-10-20 — no install held such values; a value in it must be re-entered. Applies to `ClientSecret`, `IdpCertificateBase64`, `SpPfxBase64`, `SpPfxPassword`, `SsoBypassToken`. The
 Configure page never sends secrets back to the browser (`Has…` flags tell the validator a value is already stored).
 
 > **Data Protection keys must persist and be shared across servers.** nop keeps them in
@@ -331,6 +332,36 @@ One permission, `AccessSsoSettings`, declared in `ExternalAuthSSOPermissionConfi
 Administrators on install and checked on every admin action. The former `AccessSsoPlugin` was never checked; the
 plugin update removes its record.
 
+### 7.4 Certificate and metadata monitoring (2026-10-20, plugin version `…_DATA_0.9`)
+
+**System → Warnings** (and the dashboard's "there are warnings" notice) lists, for every store with SSO enabled:
+
+| Finding | Level | Source |
+|---|---|---|
+| IdP signing certificate (SAML) expired / expiring / unreadable | Fail / Warning / Fail | the stored certificate's `NotAfter` |
+| SP certificate (PFX) expired / expiring / unreadable — only when signing or encryption uses it | Fail / Warning / Fail | the stored PFX |
+| OIDC client secret expired / expiring | Fail / Warning | `ClientSecretExpiresOnUtc`, typed by the admin (Entra does not expose it without Graph); good through the end of that day |
+| IdP metadata differs from the stored values, or could not be read | Warning | the last comparison (`IdpMetadataDifferences`) |
+
+"Expiring" = within `CertificateWarningDays` (default 30). Built live by `SsoSystemWarningsConsumer`
+(`IConsumer<SystemWarningCreatedEvent>`, which is why the plugin references `Nop.Web`) from `ISsoMonitoringService`,
+which reads stored values only — it never calls the IdP.
+
+**Daily task "SSO certificate and metadata check"** (`SsoDailyCheckTask`, registered on install and update, removed on
+uninstall; *Run now* under System → Schedule tasks):
+1. For every enabled SAML store with a metadata URL, compare entity ID, SSO / SLO URLs and signing certificate with the
+   published metadata (`ISsoTestConnectionService.CheckMetadataAsync` — the same comparison as Test connection, which
+   also records its result). The result is stored on the store and shown under the metadata URL on Configure.
+2. A store with **Apply metadata changes automatically** on takes the IdP's values for what differs (audit row
+   `ConfigChanged`, "IdP metadata applied automatically…"), then is compared again. The certificate is replaced only
+   when the stored one is no longer published, so an IdP listing an old and a new certificate during a rollover keeps
+   working. The metadata's signature is not verified: trust rests on the HTTPS URL, hence opt-in per store.
+3. One `ScheduledCheck` audit row per finding.
+
+Verified 2026-10-20 against Microsoft Entra's public `common` metadata: wrong entity ID / SSO URL / certificate
+reported, then applied automatically; a 10-day certificate and a client secret 5 days out warned, an expired one
+failed, 90 days out stayed quiet.
+
 ---
 
 ## 8. Admin UI
@@ -343,9 +374,12 @@ Four controllers on `SsoAdminControllerBase` (admin area, `[AuthorizeAdmin]`, an
 `SsoConfiguration` (Configure, ConfigureStore, ChangeStoreScopeSSOConfiguration, ImportIdpMetadata, OnboardingReport),
 `SsoAccounts` (SsoAccounts, SsoAccountsList, AddSsoAccount, TestConnection, DeleteSsoAccount),
 `SsoGroupRoleMappings` (GroupRoleMappings, …List, …Create, …Edit, …Delete), `SsoAuditLog` (AuditLog, AuditLogList,
-ClearAuditLog). Names are in `Constants/SsoAdminControllers`. Page behaviour is in `Content/Admin/sso-admin.js`
+ClearAuditLog). Names are in `Constants/SsoAdminControllers`. Page behaviour is in `Content/Admin/Sso/sso-admin.js`
 (`window.SsoAdmin`), fed by a hidden `data-*` config div on each page — no inline scripts on Configure or SSO
-Accounts. After editing the script, empty `Presentation/Nop.Web/wwwroot/bundles` (WebOptimizer disk cache).
+Accounts. `Views/Configure.cshtml` holds the form, the scope picker and the `<nop-card>` wrappers in order; each card's
+body is a partial in `Views/Configure/` (`_General`, `_OpenIdConnect`, `_IdentityProvider`, `_SendToIdpTeam`,
+`_ServiceProvider`, `_ClaimMapping`, `_UserProvisioning`, `_BindingsRedirects`, `_LoginBypass`, `_AuditLogging`,
+`_MockMode`, `_TestConnection`). A new partial needs its own `.csproj` entry or it does not deploy. After editing the script, empty `Presentation/Nop.Web/wwwroot/bundles` (WebOptimizer disk cache).
 
 | Page / endpoint | Action(s) | Notes |
 |---|---|---|
@@ -444,9 +478,10 @@ audited as success (G13); default roles are applied (G14). **None of it has run 
 | Web farm OIDC changes | A settings save reaches other servers only when their cached options expire (15 minutes) |
 | nop registration type | nop's `UserRegistrationType` = *Disabled* refuses new SSO users even with `AutoRegister` on |
 
-**Planned in `SSOPlan.v2.md` but not built:** IdP-metadata cache and auto-refresh from `IdpMetadataUrl`; a
-a scheduled certificate-expiry warning (expiry is only shown
-on the SSO Accounts grid and by Test connection); health checks; OpenTelemetry; Azure Key Vault for the SP PFX; automated tests.
+**Planned in `SSOPlan.v2.md` but not built:** OpenTelemetry; Azure Key Vault for the SP PFX; service and
+end-to-end tests (unit tests exist — §12). **Health checks: decided not needed (2026-10-20)** — there is no
+monitoring tool to poll an endpoint, and System → Warnings (§7.4) reports the same things. Built on 2026-10-20 (§7.4):
+the daily metadata comparison with opt-in automatic apply, and certificate / client-secret expiry warnings.
 
 **Built but not in the plan:** SSO Accounts page, Add SSO account, Test connection with audit, onboarding report,
 per-IP rate limiting, `RedirectLoginToSso` opt-out, `IdpDisplayName`, `ConfigChanged` / `LogCleared` /
@@ -461,7 +496,14 @@ nop's default `ExternalAuthentication/*` rather than `/external-auth/microsoft/c
 
 ## 12. Testing
 
-Not yet done on 5.00: real OIDC and SAML sign-in. A local Keycloak (Docker) covers both protocols; Auth0 / Okta
+**Unit tests** — `Tests/CW.Tests/ExternalAuth.SSO/` (run `dotnet test Tests/CW.Tests`), no database or network:
+secrets format (round trip, empty, old format and foreign keys refused), bypass-token match, email-domain allowlist,
+group-overage detection, role changes (grant / remove / owned-set boundary), mapping-value pattern, privileged roles,
+SAML binding parse, certificate loading (Base64, PEM, bad input) and SHA-256 thumbprint, and the outbound-URL guard
+(private / reserved addresses, HTTP, loopback), expiry windows and how a metadata comparison is described (77
+cases). The helpers they reach are `internal`, visible to `CW.Tests` only.
+
+**Sign-in flows** — not yet done on 5.00: real OIDC and SAML sign-in. A local Keycloak (Docker) covers both protocols; Auth0 / Okta
 developer tenants also work. Run over **HTTPS** (SAML correlation needs it), on **two stores with different IdP
 settings**. The full case list is `SSO_Gaps_Fix_Spec.md` §4; the minimum per protocol:
 

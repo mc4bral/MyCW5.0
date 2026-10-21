@@ -1,0 +1,108 @@
+@model Nop.Plugin.ExternalAuth.SSO.Models.ConfigurationModel
+@* Configure page, card "microsoft-sp" — the <nop-card> wrapper is in Views/Configure.cshtml. *@
+
+<div class="card-body">
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AcsUrl" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AcsUrl" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.AcsUrl.Hint")</small>
+            <span asp-validation-for="AcsUrl"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SpEntityId" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="SpEntityId" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpEntityId.Hint")</small>
+            <span asp-validation-for="SpEntityId"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SpLogoutUrl" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="SpLogoutUrl" />
+            <span asp-validation-for="SpLogoutUrl"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SignedRequest" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="SignedRequest" />
+            <span asp-validation-for="SignedRequest"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SignLogoutRequest" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="SignLogoutRequest" />
+            <span asp-validation-for="SignLogoutRequest"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="EncryptedAssertion" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="EncryptedAssertion" />
+            <span asp-validation-for="EncryptedAssertion"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="AllowIdpInitiatedLogin" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-for="AllowIdpInitiatedLogin" />
+            <span asp-validation-for="AllowIdpInitiatedLogin"></span>
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SpPfxBase64" />
+        </div>
+        <div class="col-md-9">
+            <nop-textarea asp-required="true" asp-for="SpPfxBase64" html-attributes="@(new { rows = "3", placeholder = string.IsNullOrEmpty(Model.SpPfxPreview) ? T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text : Model.SpPfxPreview })" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpPfxBase64.Hint")</small>
+            <span asp-validation-for="SpPfxBase64"></span>
+            @if (!string.IsNullOrEmpty(Model.SpPfxPreview))
+            {
+                <div class="form-check mt-2 alert alert-warning py-1">
+                    <input asp-for="ClearSpPfx" class="form-check-input" />
+                    <label asp-for="ClearSpPfx" class="form-check-label">
+                        <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+    <div class="form-group row">
+        <div class="col-md-3">
+            <nop-label asp-for="SpPfxPassword" />
+        </div>
+        <div class="col-md-9">
+            <nop-editor asp-required="true" asp-for="SpPfxPassword" html-attributes="@(new { type = "password", placeholder = Model.HasSpPfxPassword ? T("Plugins.ExternalAuth.SSO.Common.SecretIsSet").Text : T("Plugins.ExternalAuth.SSO.Common.SecretNotSet").Text })" />
+            <small class="form-text text-muted">@T("Plugins.ExternalAuth.SSO.Fields.SpPfxPassword.Hint")</small>
+            <span asp-validation-for="SpPfxPassword"></span>
+            @if (Model.HasSpPfxPassword)
+            {
+                <div class="form-check mt-2 alert alert-warning py-1">
+                    <input asp-for="ClearSpPfxPassword" class="form-check-input" />
+                    <label asp-for="ClearSpPfxPassword" class="form-check-label">
+                        <i class="fas fa-trash"></i> @T("Plugins.ExternalAuth.SSO.Common.ClearStoredOnSave")
+                    </label>
+                </div>
+            }
+        </div>
+    </div>
+</div>

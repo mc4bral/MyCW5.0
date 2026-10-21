@@ -15,7 +15,7 @@ public static class SafeUrl
 {
     #region Utilities
 
-    private static bool IsPrivateOrReservedAddress(IPAddress addr)
+    internal static bool IsPrivateOrReservedAddress(IPAddress addr)
     {
         if (addr.IsIPv4MappedToIPv6)
             addr = addr.MapToIPv4();
